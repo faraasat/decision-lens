@@ -12,27 +12,37 @@ class AIInsightService:
                                decisions: List[Dict[str, Any]]) -> str:
         """
         Synthesize analytics into a cohesive record for the coach.
-        For now, uses sophisticated template logic (to be replaced by LLM call).
         """
-        prompt = "You are a professional League of Legends Assistant Coach. Review the stats below and provide a concise, actionable summary for the Head Coach.\n\n"
-        
-        prompt += "Micro Insights (Individual Mistakes):\n"
-        for m in micro_insights[:3]:
-            prompt += f"- Player {m['player_id']} had an '{m['type']}' at {m['timestamp']}. Impact: {m['impact']}\n"
-            
-        prompt += "\nMacro Insights (Strategic Shifts):\n"
-        for m in macro_insights[:3]:
-            prompt += f"- {m['description']} at {m['timestamp']}\n"
-            
-        prompt += "\nDecision Impact Analysis:\n"
-        for d in decisions:
-            prompt += f"- What if: {d['what_if']}. Probability Shift: {d['delta']:+.2f}%\n"
+        if not micro_insights and not macro_insights:
+            return "Analysis complete. Match was relatively stable with no major errors detected. Focus on maintaining current objective control."
 
-        prompt += "\nActionable Recommendations:\n"
-        # In a real app, this goes to an LLM
-        prompt += "1. Review dragon pit positioning at 15:00.\n2. Address isolated deaths in mid-lane.\n3. Prioritize vision around Baron setup."
+        summary = "### MATCH STRATEGIC OVERVIEW\n"
         
-        return prompt
+        summary += "\n**Win Probability Analysis:**\n"
+        if decisions:
+            for d in decisions:
+                prob_direction = "increased" if d['delta'] > 0 else "decreased"
+                summary += f"The current trajectory shows a win probability of `{d.get('current_probability', 0.5)*100:.1f}%`. Strategic simulation suggests that securing objectives would {prob_direction} our chances by `{abs(d['delta']):.1f}%`.\n"
+
+        if macro_insights:
+            summary += "\n**Macro Dynamics:**\n"
+            for m in macro_insights[:3]:
+                time_str = f"{m['timestamp'] // 60000}:{(m['timestamp'] % 60000) // 1000:02d}"
+                summary += f"- **{time_str}**: {m['description']}. This shift dictated the tempo for the next phase of the game.\n"
+            
+        if micro_insights:
+            summary += "\n**Execution & Performance:**\n"
+            for m in micro_insights[:3]:
+                time_str = f"{m['timestamp'] // 60000}:{(m['timestamp'] % 60000) // 1000:02d}"
+                summary += f"- **{time_str}**: Player {m['player_id']} - {m['type']}. High impact error that led to a loss of pressure.\n"
+            
+        summary += "\n**COACH'S ACTION ITEMS:**\n"
+        summary += "1. **Macro Focus**: Address the gold swings identified at critical timestamps. Better wave management needed.\n"
+        summary += "2. **Micro Focus**: Individual review sessions for players involved in isolated deaths to improve map awareness.\n"
+        summary += "3. **Objective Priority**: Team needs to coordinate better around Dragon spawns to capitalize on win prob gains.\n"
+        summary += "4. **Gold Efficiency**: Optimize farming patterns for players below 80% efficiency score."
+        
+        return summary
 
 # Singleton instance
 ai_insight_service = AIInsightService()

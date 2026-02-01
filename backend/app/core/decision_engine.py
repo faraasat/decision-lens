@@ -17,13 +17,31 @@ class DecisionEngine:
     def train_mock_model(self):
         """Train a model on synthetic data for demonstration purposes."""
         # Generate synthetic data
-        n_samples = 1000
-        X = pd.DataFrame(np.random.randn(n_samples, len(self.feature_names)), columns=self.feature_names)
+        n_samples = 2000
+        # Creating features with realistic ranges
+        data = {
+            "gold_diff": np.random.normal(0, 3000, n_samples),
+            "xp_diff": np.random.normal(0, 2000, n_samples),
+            "towers_diff": np.random.randint(-11, 11, n_samples),
+            "dragons_diff": np.random.randint(-5, 5, n_samples),
+            "barons_diff": np.random.randint(-3, 3, n_samples),
+            "time_seconds": np.random.randint(0, 2400, n_samples),
+            "team100_kills": np.random.randint(0, 40, n_samples),
+            "team200_kills": np.random.randint(0, 40, n_samples)
+        }
+        X = pd.DataFrame(data)
         
-        # Simple heuristic: gold_diff and dragons_diff highly correlate with win
-        y = (X["gold_diff"] * 2 + X["dragons_diff"] * 3 + np.random.randn(n_samples) > 0).astype(int)
+        # Simple win probability heuristic
+        logit = (X["gold_diff"] * 0.001 + 
+                 X["towers_diff"] * 0.5 + 
+                 X["dragons_diff"] * 0.8 + 
+                 X["barons_diff"] * 1.5 + 
+                 (X["team100_kills"] - X["team200_kills"]) * 0.1)
         
-        self.model = xgb.XGBClassifier()
+        prob = 1 / (1 + np.exp(-logit))
+        y = (prob > np.random.rand(n_samples)).astype(int)
+        
+        self.model = xgb.XGBClassifier(n_estimators=50, max_depth=3)
         self.model.fit(X, y)
         self.explainer = shap.TreeExplainer(self.model)
 
