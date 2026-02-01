@@ -107,7 +107,7 @@ export default function Dashboard() {
         if (message.type === "STATE_UPDATE") {
           const newData = message.data;
           setLiveDataHistory(prev => [...prev, newData].slice(-50)); // Keep last 50 snapshots
-          
+
           // Update the current view data
           setData((prev: any) => {
             // Even if prev is null, we want to set the initial state from live data
@@ -118,12 +118,13 @@ export default function Dashboard() {
               macro_insights: [],
               micro_insights: [],
               player_stats: [],
-              objectives: []
+              objectives: [],
+              ai_coach_summary: ""
             };
-            
+
             // We need to merge the new live state into our existing data structure
             const updatedSnapshots = [...(baseData.timeline_snapshots || []), newData];
-            
+
             // Accumulate insights and objectives
             const updatedMacro = [...(baseData.macro_insights || [])];
             if (newData.macro_insights) {
@@ -154,6 +155,7 @@ export default function Dashboard() {
 
             return {
               ...baseData,
+              game: message.game || baseData.game,
               timeline_snapshots: updatedSnapshots,
               current_state: newData,
               player_stats: newData.player_stats || baseData.player_stats,
@@ -161,10 +163,11 @@ export default function Dashboard() {
               macro_insights: updatedMacro,
               micro_insights: updatedMicro,
               objectives: updatedObjectives,
-              draft_analysis: newData.draft_analysis || baseData.draft_analysis
+              draft_analysis: newData.draft_analysis || baseData.draft_analysis,
+              ai_coach_summary: newData.ai_coach_summary || baseData.ai_coach_summary
             };
           });
-          
+
           // Force current index to the end
           setCurrentTimeIndex((prev) => {
              // In live mode, we just want to show the latest
@@ -238,10 +241,15 @@ export default function Dashboard() {
       current_snapshot: lastSnap,
       current_state: {
         ...(data?.current_state || {}),
-        win_prob: lastSnap?.win_prob ?? 0.5,
-        gold_diff: lastSnap?.gold_diff ?? 0,
-        xp_diff: lastSnap?.xp_diff ?? 0,
-        timestamp: lastSnap?.timestamp ?? 0,
+        win_prob: lastSnap?.win_prob ?? data?.current_state?.win_prob ?? 0.5,
+        gold_diff: lastSnap?.gold_diff ?? data?.current_state?.gold_diff ?? 0,
+        xp_diff: lastSnap?.xp_diff ?? data?.current_state?.xp_diff ?? 0,
+        timestamp: lastSnap?.timestamp ?? data?.current_state?.timestamp ?? 0,
+        dragons_diff: lastSnap?.dragons_diff ?? data?.current_state?.dragons_diff ?? 0,
+        towers_diff: lastSnap?.towers_diff ?? data?.current_state?.towers_diff ?? 0,
+        barons_diff: lastSnap?.barons_diff ?? data?.current_state?.barons_diff ?? 0,
+        team100_kills: lastSnap?.team100_kills ?? data?.current_state?.team100_kills ?? 0,
+        team200_kills: lastSnap?.team200_kills ?? data?.current_state?.team200_kills ?? 0,
       },
       player_stats: lastSnap?.player_stats || data?.player_stats || [],
       shap_explanations:

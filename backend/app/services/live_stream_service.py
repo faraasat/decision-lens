@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional
 from fastapi import WebSocket
 import httpx
 from .grid_service import grid_service
+from .ai_insight_service import ai_insight_service
 from ..core.normalization import normalizer
 from ..core.decision_engine import decision_engine
 from ..analytics.micro import micro_analytics
@@ -54,20 +55,26 @@ class LiveStreamService:
         self.state_history = []
         
         logger.info(f"Starting live stream for match: {match_id}")
-        
+
         try:
             # 1. Try to get initial state/timeline
             full_data = await grid_service.get_match_timeline(match_id)
             snapshots = normalizer.normalize_timeline(full_data)
             game = full_data.get("metadata", {}).get("game", "lol")
-            
+
             # Extract events for micro analytics
             event_types = ["KILL", "SPIKE_PLANTED", "SPIKE_DEFUSED"] if game == "valorant" else ["CHAMPION_KILL", "ELITE_MONSTER_KILL", "BUILDING_KILL"]
             all_events = normalizer.extract_events(full_data, event_types)
 
-            if snapshots.empty:
-                logger.warning(f"No snapshots found for match {match_id}. Cannot start live stream.")
-                self.is_running = False
+            # Check if snapshots are meaningful (have varying timestamps)
+            has_meaningful_data = False
+            if not snapshots.empty and len(snapshots) > 1:
+                timestamps = snapshots['timestamp'].unique() if 'timestamp' in snapshots.columns else []
+                has_meaningful_data = len(timestamps) > 1 and max(timestamps) > 0
+
+            if not has_meaningful_data:
+                logger.warning(f"No meaningful timeline data for match {match_id} (found {len(snapshots)} snapshots). Falling back to mock stream.")
+                await self._run_mock_stream(match_id, game)
                 return
 
             # 2. Stream snapshots one by one to simulate real-time
@@ -89,21 +96,40 @@ class LiveStreamService:
                 
                 # Dynamic Analytics
                 current_df = pd.DataFrame(self.state_history + [state])
-                state['macro_insights'] = macro_analytics.identify_strategic_inflections(current_df, game=game, events_df=current_events)
-                state['player_stats'] = micro_analytics.compute_player_efficiency(current_df, current_events, game=game)
-                state['micro_insights'] = micro_analytics.analyze_player_mistakes(current_events, current_df, game=game)
-                state['objectives'] = macro_analytics.evaluate_objective_control(current_events, game=game)
-                state['draft_analysis'] = macro_analytics.analyze_draft_synergy(full_data.get("metadata", {}))
-                
+                macro_insights = macro_analytics.identify_strategic_inflections(current_df, game=game, events_df=current_events)
+                player_stats = micro_analytics.compute_player_efficiency(current_df, current_events, game=game)
+                micro_insights = micro_analytics.analyze_player_mistakes(current_events, current_df, game=game)
+                objectives = macro_analytics.evaluate_objective_control(current_events, game=game)
+                draft_analysis = macro_analytics.analyze_draft_synergy(full_data.get("metadata", {}))
+
+                state['macro_insights'] = macro_insights
+                state['player_stats'] = player_stats
+                state['micro_insights'] = micro_insights
+                state['objectives'] = objectives
+                state['draft_analysis'] = draft_analysis
+
+                # Generate dynamic AI summary
+                what_if_scenarios = [{
+                    "what_if": f"Better performance on {('site entries' if game == 'valorant' else 'objective setup')}",
+                    "delta": 5.0,
+                    "current_probability": win_prob
+                }]
+                state['ai_coach_summary'] = ai_insight_service.generate_coach_summary(
+                    micro_insights, macro_insights, what_if_scenarios,
+                    game=game, player_stats=player_stats
+                )
+
                 self.state_history.append(state)
-                
-                await self.broadcast(clean_json_data({
+
+                broadcast_data = clean_json_data({
                     "type": "STATE_UPDATE",
                     "match_id": match_id,
                     "game": game,
                     "data": state,
                     "history_count": len(self.state_history)
-                }))
+                })
+                logger.info(f"Broadcasting state update - timestamp: {state.get('timestamp')}, gold_diff: {state.get('gold_diff')}, win_prob: {state.get('win_prob')}")
+                await self.broadcast(broadcast_data)
                 
                 # Simulate the delay between real-game snapshots (usually 1-5 seconds)
                 await asyncio.sleep(2)
@@ -126,14 +152,15 @@ class LiveStreamService:
 
     async def _run_mock_stream(self, match_id: str, game: str = "lol"):
         """Generates realistic mock data if real match data is unavailable."""
+        logger.info(f"Starting mock stream for match {match_id}, game={game}")
         gold_diff = 0
         team100_kills = 0
         team200_kills = 0
         dragons_diff = 0
-        
+
         # Mock events for analytics
         mock_events = []
-        
+
         for i in range(200):
             if not self.is_running:
                 break
@@ -166,9 +193,13 @@ class LiveStreamService:
                 "team200_kills": team200_kills,
                 "participantFrames": {
                     str(p): {
+                        "participantId": p,
+                        "teamId": 100 if p <= 5 else 200,
                         "position": {"x": 5000 + (i * 10) + (p * 100), "y": 5000 + (i * 10) + (p * 100)},
-                        "totalGold" if game == "lol" else "credits": 1000 + (i * 100),
-                        "xp" if game == "lol" else "loadoutValue": 800 + (i * 80),
+                        "totalGold": 1000 + (i * 100),
+                        "credits": 1000 + (i * 100),
+                        "xp": 800 + (i * 80),
+                        "loadoutValue": 800 + (i * 80),
                         "wardsPlaced": 2 + (i // 10),
                         "minionsKilled": 10 + (i * 8)
                     } for p in range(1, 11)
@@ -183,22 +214,41 @@ class LiveStreamService:
             # Dynamic Analytics for Mock
             current_df = pd.DataFrame(self.state_history + [state])
             events_df = pd.DataFrame(mock_events)
-            state['macro_insights'] = macro_analytics.identify_strategic_inflections(current_df, game=game, events_df=events_df)
-            state['player_stats'] = micro_analytics.compute_player_efficiency(current_df, events_df, game=game)
-            state['micro_insights'] = micro_analytics.analyze_player_mistakes(events_df, current_df, game=game)
-            state['objectives'] = macro_analytics.evaluate_objective_control(events_df, game=game)
-            state['draft_analysis'] = {}
-            
+            macro_insights = macro_analytics.identify_strategic_inflections(current_df, game=game, events_df=events_df)
+            player_stats = micro_analytics.compute_player_efficiency(current_df, events_df, game=game)
+            micro_insights = micro_analytics.analyze_player_mistakes(events_df, current_df, game=game)
+            objectives = macro_analytics.evaluate_objective_control(events_df, game=game)
+            draft_analysis = {}
+
+            state['macro_insights'] = macro_insights
+            state['player_stats'] = player_stats
+            state['micro_insights'] = micro_insights
+            state['objectives'] = objectives
+            state['draft_analysis'] = draft_analysis
+
+            # Generate dynamic AI summary for mock
+            what_if_scenarios = [{
+                "what_if": f"Better performance on {('site entries' if game == 'valorant' else 'objective setup')}",
+                "delta": 5.0,
+                "current_probability": state['win_prob']
+            }]
+            state['ai_coach_summary'] = ai_insight_service.generate_coach_summary(
+                micro_insights, macro_insights, what_if_scenarios,
+                game=game, player_stats=player_stats
+            )
+
             self.state_history.append(state)
-            
-            await self.broadcast(clean_json_data({
+
+            broadcast_data = clean_json_data({
                 "type": "STATE_UPDATE",
                 "match_id": match_id,
                 "game": game,
                 "data": state,
                 "is_mock": True,
                 "history_count": len(self.state_history)
-            }))
+            })
+            logger.info(f"Broadcasting mock state - timestamp: {state.get('timestamp')}, gold_diff: {state.get('gold_diff')}, win_prob: {state.get('win_prob')}")
+            await self.broadcast(broadcast_data)
             await asyncio.sleep(2)
 
     def stop_stream(self):
