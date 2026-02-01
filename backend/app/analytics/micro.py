@@ -76,7 +76,11 @@ class MicroAnalyticsEngine:
                 "team_id": team_id,
                 "gpm": player_gold / duration_min,
                 "total_gold": player_gold,
-                "efficiency_score": 70 + (i * 2) % 25 # Mock score
+                "efficiency_score": 70 + (i * 2) % 25, # Mock score
+                "vision_score": 10 + (i * 3) % 40,
+                "kill_participation": 40 + (i * 7) % 50,
+                "damage_share": 10 + (i * 4) % 20,
+                "cs_per_min": 5 + (i * 0.5) % 5 if i % 5 != 0 else 1.2 # Support has low CS
             })
             
         return stats
