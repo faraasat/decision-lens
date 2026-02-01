@@ -56,9 +56,20 @@ class GridService:
                     logger.info(f"Successfully fetched full timeline for {match_id}")
                     timeline_data = file_res.json()
                 else:
-                    logger.warning(f"File Download API not available (Status: {file_res.status_code}), falling back to GraphQL")
+                    logger.warning(f"File Download API not available (Status: {file_res.status_code}), falling back to Series State")
+                    # Fallback to Series State API for live matches
+                    state_res = await client.get(
+                        f"https://api.grid.gg/series-state/grid/series/{match_id}",
+                        headers={"x-api-key": self.api_key},
+                        timeout=10.0,
+                    )
+                    if state_res.status_code == 200:
+                        timeline_data = state_res.json()
+                        logger.info(f"Successfully fetched live state for {match_id}")
+                    else:
+                        logger.error(f"Failed to fetch live state: {state_res.status_code}")
             except Exception as e:
-                logger.error(f"Error calling File Download API: {str(e)}")
+                logger.error(f"Error calling GRID APIs: {str(e)}")
 
             # Fetch Series Details (Teams, Tournament) - always good to have
             try:
@@ -108,48 +119,88 @@ class GridService:
         
         # Determine game title and ID
         title_name = details_data.get("title", {}).get("name")
-        if not title_name and "seriesState" in timeline_data:
-            title_name = timeline_data["seriesState"].get("title", {}).get("name")
+        if not title_name:
+            if "seriesState" in timeline_data:
+                title_name = timeline_data["seriesState"].get("title", {}).get("name")
+            else:
+                title_name = timeline_data.get("title", {}).get("name")
         
         game = "lol"
         if title_name:
-            if "Valorant" in title_name:
+            if "Valorant" in title_name.lower():
                 game = "valorant"
-            elif "League of Legends" in title_name:
+            elif "League of Legends" in title_name.lower():
                 game = "lol"
         
-        # If we still don't know, try titleId from seriesState
-        if game == "lol" and "seriesState" in timeline_data:
-            tid = str(timeline_data["seriesState"].get("titleId"))
-            if tid == "6":
-                game = "valorant"
+        # If we still don't know, try titleId
+        title_id = str(details_data.get("title", {}).get("id") or 
+                       timeline_data.get("seriesState", {}).get("titleId") or 
+                       timeline_data.get("titleId", ""))
+        
+        if title_id == "6":
+            game = "valorant"
+        elif title_id == "3":
+            game = "lol"
 
         team_list = []
-        for i, t in enumerate(teams):
-            team_list.append({
-                "id": 100 if i == 0 else 200,
-                "name": t.get("base", {}).get("name", f"Team {i+1}"),
-                "code": t.get("base", {}).get("code"),
-                "roster": t.get("roster", []),
-                "side": "blue" if i == 0 else "red"
-            })
+        
+        # Strategy: Use details_data as base, then enrich with timeline_data
+        base_teams = details_data.get("teams", [])
+        
+        # Find where the game state is (seriesState or root)
+        state = timeline_data.get("seriesState") or timeline_data
+        timeline_teams = state.get("teams", [])
+        if not timeline_teams and "games" in state and state["games"]:
+            # Try latest game
+            timeline_teams = state["games"][-1].get("teams", [])
 
-        # If no teams in details, try to extract from timeline
-        if not team_list and "seriesState" in timeline_data:
-            for i, t in enumerate(timeline_data["seriesState"].get("teams", [])):
+        if base_teams:
+            for i, t in enumerate(base_teams):
+                draft = []
+                # Try to find matching team in timeline to get draft
+                team_name = t.get("base", {}).get("name")
+                matching_t = next((tt for tt in timeline_teams if tt.get("name") == team_name), None)
+                if not matching_t and i < len(timeline_teams):
+                    matching_t = timeline_teams[i]
+                
+                if matching_t:
+                    for p in matching_t.get("players", []):
+                        char = p.get("champion") or p.get("agent")
+                        if char:
+                            draft.append(char.get("name"))
+                
+                team_list.append({
+                    "id": 100 if i == 0 else 200,
+                    "name": team_name or f"Team {i+1}",
+                    "code": t.get("base", {}).get("code"),
+                    "roster": t.get("roster", []),
+                    "side": "blue" if i == 0 else "red",
+                    "draft": draft
+                })
+        elif timeline_teams:
+            # Fallback to timeline teams if details missing
+            for i, t in enumerate(timeline_teams):
+                draft = []
+                for p in t.get("players", []):
+                    char = p.get("champion") or p.get("agent")
+                    if char:
+                        draft.append(char.get("name"))
+                
                 team_list.append({
                     "id": 100 if i == 0 else 200,
                     "name": t.get("name", f"Team {i+1}"),
-                    "side": "blue" if i == 0 else "red"
+                    "side": "blue" if i == 0 else "red",
+                    "draft": draft
                 })
 
         result = {
             "series_id": match_id,
             "metadata": {
                 "teams": team_list,
-                "tournament": details_data.get("tournament", {}).get("name") or (timeline_data.get("seriesState", {}).get("tournament", {}).get("name") if "seriesState" in timeline_data else "Unknown Tournament"),
+                "tournament": details_data.get("tournament", {}).get("name") or state.get("tournament", {}).get("name") or "Unknown Tournament",
                 "title": title_name or "Unknown Title",
-                "game": game
+                "game": game,
+                "video_url": f"https://player.grid.gg/video-widget?seriesId={match_id}&key={self.api_key}"
             },
             "stats": stats_data,
             "raw_details": details_data,

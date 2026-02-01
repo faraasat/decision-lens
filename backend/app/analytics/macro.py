@@ -3,19 +3,19 @@ from typing import Dict, List, Any
 
 class MacroAnalyticsEngine:
     @staticmethod
-    def identify_strategic_inflections(snapshots_df: pd.DataFrame, game: str = "lol") -> List[Dict[str, Any]]:
+    def identify_strategic_inflections(snapshots_df: pd.DataFrame, game: str = "lol", events_df: pd.DataFrame = None) -> List[Dict[str, Any]]:
         """
-        Identify moments where win probability or gold lead shifted significantly.
+        Identify moments where win probability, gold lead, or objectives shifted significantly.
         """
         inflections = []
         if snapshots_df.empty:
             return inflections
             
-        # Calculate gold diff delta
+        # 1. Gold diff delta
         snapshots_df['gold_diff_delta'] = snapshots_df['gold_diff'].diff()
         
         # Threshold for a "significant" shift
-        threshold = 1500 if game == "valorant" else 800
+        threshold = 1000 if game == "valorant" else 500
         
         significant_shifts = snapshots_df[snapshots_df['gold_diff_delta'].abs() > threshold]
         
@@ -27,8 +27,33 @@ class MacroAnalyticsEngine:
                 "magnitude": shift['gold_diff_delta'],
                 "description": f"Significant {('econ' if game == 'valorant' else 'gold')} swing towards {direction}"
             })
+        
+        # 2. Objective-based inflections
+        if events_df is not None and not events_df.empty:
+            if game == "lol":
+                # Significant LoL objectives
+                obj_events = events_df[events_df['type'].isin(['ELITE_MONSTER_KILL', 'BUILDING_KILL'])]
+                for _, event in obj_events.iterrows():
+                    etype = event.get('monsterType') or event.get('buildingType') or event.get('type')
+                    if etype in ['BARON', 'DRAGON', 'INHIBITOR']:
+                        team_id = event.get('teamId')
+                        team_label = "Blue" if team_id == 100 or team_id == "blue" else "Red"
+                        inflections.append({
+                            "timestamp": event.get('timestamp'),
+                            "type": "Objective Take",
+                            "description": f"{etype} secured by Team {team_label}"
+                        })
+            elif game == "valorant":
+                # Significant Valorant events
+                val_events = events_df[events_df['type'].isin(['SPIKE_PLANTED', 'SPIKE_DEFUSED'])]
+                for _, event in val_events.iterrows():
+                    inflections.append({
+                        "timestamp": event.get('timestamp'),
+                        "type": "Spike Event",
+                        "description": f"Spike {event.get('type').split('_')[1].lower()}ed"
+                    })
             
-        return inflections
+        return sorted(inflections, key=lambda x: x['timestamp'])
 
     @staticmethod
     def evaluate_objective_control(events_df: pd.DataFrame, game: str = "lol") -> List[Dict[str, Any]]:
@@ -38,22 +63,31 @@ class MacroAnalyticsEngine:
             return objectives
             
         if game == "valorant":
-            obj_events = events_df[events_df['type'].isin(['SPIKE_PLANTED', 'SPIKE_DEFUSED', 'SPIKE_EXPLODED'])]
+            # Better Valorant objective mapping
+            obj_events = events_df[events_df['type'].str.contains('SPIKE', case=False, na=False)]
             for _, event in obj_events.iterrows():
                 objectives.append({
                     "timestamp": event.get('timestamp'),
                     "type": event.get('type'),
-                    "site": event.get('site'),
+                    "site": event.get('site', 'Unknown'),
+                    "team_id": "blue" if event.get('planterId', '').startswith('blue') or event.get('defuserId', '').startswith('blue') else "red",
                     "player_id": event.get('planterId') or event.get('defuserId')
                 })
         else:
-            obj_events = events_df[events_df['type'].isin(['ELITE_MONSTER_KILL', 'BUILDING_KILL'])]
+            # Better LoL objective mapping
+            obj_events = events_df[events_df['type'].isin(['ELITE_MONSTER_KILL', 'BUILDING_KILL', 'monsterKilled', 'buildingKilled'])]
             for _, event in obj_events.iterrows():
-                obj_type = event.get('monsterType') or event.get('buildingType')
+                obj_type = event.get('monsterType') or event.get('buildingType') or event.get('type')
+                team_id = event.get('teamId')
+                if team_id is None:
+                    # Try to infer from killerId
+                    kid = str(event.get('killerId', '0'))
+                    team_id = 100 if kid.isdigit() and int(kid) <= 5 else 200
+
                 objectives.append({
                     "timestamp": event.get('timestamp'),
-                    "type": obj_type,
-                    "team_id": event.get('teamId'),
+                    "type": str(obj_type).upper(),
+                    "team_id": team_id,
                     "killer_id": event.get('killerId')
                 })
             
@@ -75,32 +109,34 @@ class MacroAnalyticsEngine:
             # Base synergy from various archetypes
             score = 70 + (len(draft) * 2) # Base score depends on completed draft
             
+            draft_lower = [a.lower() for a in draft]
+            
             if game == "valorant":
                 # Check for roles (Simplified)
-                if any(agent in ["Jett", "Raze", "Neon"] for agent in draft): score += 5 # Entry
-                if any(agent in ["Omen", "Brimstone", "Astra", "Viper"] for agent in draft): score += 5 # Smokes
-                if any(agent in ["Killjoy", "Cypher", "Sage"] for agent in draft): score += 5 # Sentinel
+                if any(a in draft_lower for a in ["jett", "raze", "neon"]): score += 5 # Entry
+                if any(a in draft_lower for a in ["omen", "brimstone", "astra", "viper"]): score += 5 # Smokes
+                if any(a in draft_lower for a in ["killjoy", "cypher", "sage"]): score += 5 # Sentinel
                 
                 # Known combos
-                if "Viper" in draft and "Astra" in draft: score += 5 # Double controller
-                if "Jett" in draft and "Sova" in draft: score += 5 # Classic combo
+                if "viper" in draft_lower and "astra" in draft_lower: score += 5 # Double controller
+                if "jett" in draft_lower and "sova" in draft_lower: score += 5 # Classic combo
             else:
                 # LoL archetypes
-                if any(hero in ["Ornn", "Malphite", "Sejuani"] for hero in draft): score += 5 # Tank
-                if any(hero in ["Azir", "Kassadin", "Kayle", "Jinx"] for hero in draft): score += 5 # Scaling
+                if any(a in draft_lower for a in ["ornn", "malphite", "sejuani"]): score += 5 # Tank
+                if any(a in draft_lower for a in ["azir", "kassadin", "kayle", "jinx"]): score += 5 # Scaling
                 
                 # Synergies
-                if "Yasuo" in draft and any(h in ["Gragas", "Malphite", "Diana"] for h in draft): score += 10 # Wombo combo
-                if "Lucian" in draft and "Nami" in draft: score += 10 # Strong lane
+                if "yasuo" in draft_lower and any(a in draft_lower for a in ["gragas", "malphite", "diana"]): score += 10 # Wombo combo
+                if "lucian" in draft_lower and "nami" in draft_lower: score += 10 # Strong lane
             
             # Determine power spike based on composition
             spike = "Balanced"
             if game == "lol":
-                if any(h in ["Azir", "Kassadin", "Jinx"] for h in draft): spike = "Late Game"
-                elif any(h in ["Lee Sin", "Renekton", "Lucian"] for hero in draft): spike = "Early Game"
+                if any(a in draft_lower for a in ["azir", "kassadin", "jinx"]): spike = "Late Game"
+                elif any(a in draft_lower for a in ["lee sin", "renekton", "lucian"]): spike = "Early Game"
                 else: spike = "Mid Game"
             else:
-                spike = "Late Round" if "Killjoy" in draft or "Cypher" in draft else "Early Aggression"
+                spike = "Late Round" if "killjoy" in draft_lower or "cypher" in draft_lower else "Early Aggression"
 
             synergy[str(team_id)] = {
                 "team_name": team.get("name"),

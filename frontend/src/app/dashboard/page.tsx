@@ -48,35 +48,6 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-const VideoPlayer = ({ url, isLive }: { url?: string; isLive: boolean }) => {
-  return (
-    <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-2xl group">
-      {isLive ? (
-        <>
-          <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3 py-1 bg-red-600 rounded-full animate-pulse">
-            <div className="w-2 h-2 bg-white rounded-full" />
-            <span className="text-[10px] font-black text-white uppercase tracking-widest">Live Feed</span>
-          </div>
-          <iframe 
-            src={url || "https://www.youtube.com/embed/Gj2K4m93Q9w?autoplay=1&mute=1&loop=1&playlist=Gj2K4m93Q9w"} 
-            className="w-full h-full border-none"
-            allow="autoplay; encrypted-media"
-            allowFullScreen
-          />
-          <div className="absolute inset-0 pointer-events-none border-[20px] border-transparent group-hover:border-primary/5 transition-all duration-700" />
-          <div className="absolute bottom-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
-             <span className="text-[10px] font-mono text-primary bg-black/60 px-2 py-1 rounded">GRID_VIDEO_STREAM_ENCRYPTED</span>
-          </div>
-        </>
-      ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-sm">
-          <Activity className="w-12 h-12 text-slate-700 mb-4" />
-          <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Awaiting Signal Acquisition...</p>
-        </div>
-      )}
-    </div>
-  );
-};
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("macro");
@@ -158,12 +129,45 @@ export default function Dashboard() {
             
             // We need to merge the new live state into our existing data structure
             const updatedSnapshots = [...(baseData.timeline_snapshots || []), newData];
+            
+            // Accumulate insights and objectives
+            const updatedMacro = [...(baseData.macro_insights || [])];
+            if (newData.macro_insights) {
+              newData.macro_insights.forEach((m: any) => {
+                if (!updatedMacro.find(existing => existing.timestamp === m.timestamp && existing.type === m.type)) {
+                  updatedMacro.push(m);
+                }
+              });
+            }
+
+            const updatedMicro = [...(baseData.micro_insights || [])];
+            if (newData.micro_insights) {
+              newData.micro_insights.forEach((m: any) => {
+                if (!updatedMicro.find(existing => existing.timestamp === m.timestamp && existing.type === m.type && existing.player_id === m.player_id)) {
+                  updatedMicro.push(m);
+                }
+              });
+            }
+
+            const updatedObjectives = [...(baseData.objectives || [])];
+            if (newData.objectives) {
+              newData.objectives.forEach((o: any) => {
+                if (!updatedObjectives.find(existing => existing.timestamp === o.timestamp && existing.type === o.type)) {
+                  updatedObjectives.push(o);
+                }
+              });
+            }
+
             return {
               ...baseData,
               timeline_snapshots: updatedSnapshots,
               current_state: newData,
               player_stats: newData.player_stats || baseData.player_stats,
-              shap_explanations: newData.shap_explanations || baseData.shap_explanations
+              shap_explanations: newData.shap_explanations || baseData.shap_explanations,
+              macro_insights: updatedMacro,
+              micro_insights: updatedMicro,
+              objectives: updatedObjectives,
+              draft_analysis: newData.draft_analysis || baseData.draft_analysis
             };
           });
           
@@ -586,34 +590,6 @@ export default function Dashboard() {
       </header>
 
       <main className="grid grid-cols-12 gap-6 relative z-10">
-        {/* Video Feed Section */}
-        <div className="col-span-12">
-           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <VideoPlayer isLive={isLive} />
-              </div>
-              <div className="lg:col-span-1 space-y-4">
-                 <div className="glass-panel p-6 rounded-2xl h-full flex flex-col justify-center">
-                    <h3 className="text-primary font-black italic text-xl mb-2">LIVE ANALYSIS ENGINE</h3>
-                    <p className="text-slate-400 text-xs mb-4">Processing real-time telemetry from GRID Live Data Feed. XGBoost inference active at 10Hz.</p>
-                    <div className="space-y-3">
-                       <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-800">
-                          <span className="text-[10px] text-slate-500 font-bold uppercase">Signal Latency</span>
-                          <span className="text-xs font-mono text-green-400">24ms</span>
-                       </div>
-                       <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-800">
-                          <span className="text-[10px] text-slate-500 font-bold uppercase">Data Points/Sec</span>
-                          <span className="text-xs font-mono text-primary">1,420</span>
-                       </div>
-                       <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-800">
-                          <span className="text-[10px] text-slate-500 font-bold uppercase">AI Confidence</span>
-                          <span className="text-xs font-mono text-primary">94.8%</span>
-                       </div>
-                    </div>
-                 </div>
-              </div>
-           </div>
-        </div>
 
         {/* Left Column: Stats & Chart */}
         <div className="col-span-12 lg:col-span-8 space-y-6">
@@ -1752,9 +1728,11 @@ export default function Dashboard() {
                         const y =
                           100 - ((frame.position?.y || 0) / scale) * 100;
                         const isBlue =
-                          currentData?.game === "valorant"
-                            ? parseInt(pid) <= 5
-                            : parseInt(pid) <= 5;
+                          frame.teamId === 100 || 
+                          frame.teamId === "team-blue" || 
+                          frame.side === "blue" || 
+                          pid.toString().toLowerCase().includes("blue") ||
+                          (parseInt(pid) > 0 && parseInt(pid) <= 5);
                         return (
                           <motion.div
                             key={pid}
@@ -1923,11 +1901,11 @@ export default function Dashboard() {
                         </div>
                       )}
 
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8 border-t border-slate-800">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 pt-8 border-t border-slate-800">
                         <div className="space-y-4">
                           <div className="flex justify-between">
                             <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">
-                              Economy Injector
+                              Gold Differential
                             </p>
                             <p className="text-xs font-mono text-primary">
                               {simulationResult?.modified_state?.gold_diff ||
@@ -1936,70 +1914,106 @@ export default function Dashboard() {
                           </div>
                           <input
                             type="range"
-                            min="-20000"
-                            max="20000"
+                            min="-25000"
+                            max="25000"
                             step="500"
                             value={
                               simulationResult?.modified_state?.gold_diff ||
-                              data?.current_state?.gold_diff
+                              data?.current_state?.gold_diff || 0
                             }
                             onChange={(e) =>
                               handleSimulate({
                                 gold_diff: parseInt(e.target.value),
                               })
                             }
-                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary shadow-[0_0_10px_rgba(0,163,255,0.2)]"
+                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary"
                           />
                         </div>
+
                         <div className="space-y-4">
-                          <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">
-                            Objective Control
-                          </p>
-                          <div className="flex gap-2">
-                            {[0, 1, 2, 3, 4].map((val) => (
+                          <div className="flex justify-between">
+                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">
+                              {data?.game === "valorant" ? "Spike Control" : "Objective Lead"}
+                            </p>
+                            <p className="text-xs font-mono text-primary">
+                              {simulationResult?.modified_state?.dragons_diff ||
+                                data?.current_state?.dragons_diff || 0}
+                            </p>
+                          </div>
+                          <div className="flex gap-1">
+                            {[-4, -2, 0, 2, 4].map((val) => (
                               <button
                                 key={val}
                                 onClick={() =>
                                   handleSimulate({ dragons_diff: val })
                                 }
                                 className={cn(
-                                  "flex-1 py-2 rounded-lg text-xs font-black transition-all",
+                                  "flex-1 py-1.5 rounded-md text-[10px] font-black transition-all",
                                   (simulationResult?.modified_state
                                     ?.dragons_diff ??
                                     data?.current_state?.dragons_diff) === val
-                                    ? "bg-primary text-black shadow-[0_0_15px_rgba(0,163,255,0.4)]"
+                                    ? "bg-primary text-black"
                                     : "bg-slate-800 text-slate-500 hover:bg-slate-700",
                                 )}
                               >
-                                {val}
+                                {val > 0 ? `+${val}` : val}
                               </button>
                             ))}
                           </div>
                         </div>
+
                         <div className="space-y-4">
-                          <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">
-                            Structure Denial
-                          </p>
-                          <div className="flex gap-2">
-                            {[0, 2, 5, 8, 11].map((val) => (
-                              <button
-                                key={val}
-                                onClick={() =>
-                                  handleSimulate({ towers_diff: val })
-                                }
-                                className={cn(
-                                  "flex-1 py-2 rounded-lg text-xs font-black transition-all",
-                                  (simulationResult?.modified_state
-                                    ?.towers_diff ??
-                                    data?.current_state?.towers_diff) === val
-                                    ? "bg-primary text-black shadow-[0_0_15px_rgba(0,163,255,0.4)]"
-                                    : "bg-slate-800 text-slate-500 hover:bg-slate-700",
-                                )}
-                              >
-                                {val}
-                              </button>
-                            ))}
+                          <div className="flex justify-between">
+                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">
+                              Kills (Team 1)
+                            </p>
+                            <p className="text-xs font-mono text-primary">
+                              {simulationResult?.modified_state?.team100_kills ||
+                                data?.current_state?.team100_kills || 0}
+                            </p>
                           </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="50"
+                            value={
+                              simulationResult?.modified_state?.team100_kills ||
+                              data?.current_state?.team100_kills || 0
+                            }
+                            onChange={(e) =>
+                              handleSimulate({
+                                team100_kills: parseInt(e.target.value),
+                              })
+                            }
+                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                          />
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="flex justify-between">
+                            <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">
+                              Kills (Team 2)
+                            </p>
+                            <p className="text-xs font-mono text-primary">
+                              {simulationResult?.modified_state?.team200_kills ||
+                                data?.current_state?.team200_kills || 0}
+                            </p>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="50"
+                            value={
+                              simulationResult?.modified_state?.team200_kills ||
+                              data?.current_state?.team200_kills || 0
+                            }
+                            onChange={(e) =>
+                              handleSimulate({
+                                team200_kills: parseInt(e.target.value),
+                              })
+                            }
+                            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-red-500"
+                          />
                         </div>
                       </div>
                     </motion.div>

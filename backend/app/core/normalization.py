@@ -9,11 +9,14 @@ class Normalizer:
     @staticmethod
     def _get_frames(timeline_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Helper to extract frames from different GRID data formats."""
-        if "seriesState" in timeline_data:
-            state = timeline_data["seriesState"]
+        # Try to find the state object (either at root or under 'seriesState')
+        state = timeline_data.get("seriesState") or (timeline_data if "games" in timeline_data or "titleId" in timeline_data else None)
+        
+        if state:
             games = state.get("games", [])
             if not games:
-                return []
+                # If no games, maybe frames are at state level?
+                return state.get("frames", [])
             
             # Try to find frames in games (latest first)
             for game in reversed(games):
@@ -52,8 +55,8 @@ class Normalizer:
         frames = Normalizer._get_frames(timeline_data)
         
         # Determine game type
-        if "seriesState" in timeline_data:
-            state = timeline_data["seriesState"]
+        state = timeline_data.get("seriesState") or (timeline_data if "games" in timeline_data or "titleId" in timeline_data else {})
+        if state:
             metadata = {
                 "game": "lol" if str(state.get("titleId")) == "3" else "valorant" if str(state.get("titleId")) == "6" else "lol"
             }
@@ -97,8 +100,18 @@ class Normalizer:
                         cum_stats["towers_diff"] += val
                 elif game == "valorant":
                     if etype == "KILL":
-                        killer_id = int(event.get("killerId", 0))
-                        if killer_id <= 5: cum_stats["team100_kills"] += 1
+                        # Valorant killerId can be a UUID or string
+                        killer_id_raw = event.get("killerId", "0")
+                        try:
+                            # Handle numeric IDs if present
+                            killer_id = int(str(killer_id_raw))
+                            is_team100 = killer_id <= 5
+                        except (ValueError, TypeError):
+                            # Handle UUIDs or string IDs (e.g. starting with blue/red or just random)
+                            # Simple heuristic: check if it contains 'blue' or if it's in the first 5 participant IDs
+                            is_team100 = "blue" in str(killer_id_raw).lower() or any(str(p_id) == str(killer_id_raw) for p_id in list(participant_data.keys())[:5])
+                        
+                        if is_team100: cum_stats["team100_kills"] += 1
                         else: cum_stats["team200_kills"] += 1
                     elif etype == "SPIKE_PLANTED":
                         cum_stats["dragons_diff"] += 1 # Map Spike to dragons_diff for XGBoost consistency
@@ -137,12 +150,32 @@ class Normalizer:
             }
             for pid, data in participant_data.items():
                 if game == "valorant":
-                    team_id = "team-blue" if str(pid).lower().startswith("blue") or (pid.isdigit() and int(pid) <= 5) else "team-red"
+                    # Try to use teamId from data
+                    team_id = data.get("teamId")
+                    if team_id is None:
+                        # Fallback heuristics
+                        if str(pid).lower().startswith("blue"): team_id = "team-blue"
+                        elif str(pid).lower().startswith("red"): team_id = "team-red"
+                        else:
+                            try:
+                                pid_int = int(pid)
+                                team_id = "team-blue" if pid_int <= 5 else "team-red"
+                            except:
+                                team_id = "team-blue"
+                    
+                    # Normalize team_id format
+                    if team_id in [100, "100", "blue"]: team_id = "team-blue"
+                    if team_id in [200, "200", "red"]: team_id = "team-red"
+
                     primary_val = data.get("credits", 0) or data.get("stats", {}).get("credits", 0)
                     secondary_val = data.get("loadoutValue", 0) or data.get("stats", {}).get("loadoutValue", 0)
                     
                     snapshot[f"p{pid}_credits"] = primary_val
                     snapshot[f"p{pid}_loadout"] = secondary_val
+                    # Extract position if available
+                    pos = data.get("position") or data.get("stats", {}).get("position")
+                    if pos:
+                        snapshot[f"p{pid}_position"] = pos
                 else: # LoL
                     # Try to use teamId from data first
                     team_id = data.get("teamId")
@@ -151,6 +184,9 @@ class Normalizer:
                             team_id = 100 if int(pid) <= 5 else 200
                         except:
                             team_id = 100
+                    
+                    if team_id in ["blue", "team-blue"]: team_id = 100
+                    if team_id in ["red", "team-red"]: team_id = 200
                             
                     primary_val = data.get("totalGold", 0) or data.get("stats", {}).get("gold", 0) or data.get("gold", 0)
                     secondary_val = data.get("xp", 0) or data.get("stats", {}).get("xp", 0)
@@ -160,6 +196,10 @@ class Normalizer:
                     snapshot[f"p{pid}_minionsKilled"] = data.get("minionsKilled", 0) or data.get("stats", {}).get("minionsKilled", 0)
                     snapshot[f"p{pid}_jungleMinionsKilled"] = data.get("jungleMinionsKilled", 0) or data.get("stats", {}).get("jungleMinionsKilled", 0)
                     snapshot[f"p{pid}_wardsPlaced"] = data.get("wardsPlaced", 0) or data.get("stats", {}).get("wardsPlaced", 0)
+                    # Extract position
+                    pos = data.get("position") or data.get("stats", {}).get("position")
+                    if pos:
+                        snapshot[f"p{pid}_position"] = pos
 
                 if team_id in team_stats:
                     team_stats[team_id]["primary"] += primary_val
@@ -189,15 +229,27 @@ class Normalizer:
         
         frames = Normalizer._get_frames(timeline_data)
         
+        # Helper to check event type
+        def match_type(etype, target_types):
+            if not etype or not target_types: return True
+            etype_upper = str(etype).upper()
+            for target in target_types:
+                target_upper = str(target).upper()
+                if target_upper in etype_upper or etype_upper in target_upper:
+                    return True
+            return False
+
         # Look in frames (Standard LoL / Val structure)
         for frame in frames:
             for event in frame.get("events", []):
-                if event_types is None or event.get("type") in event_types:
+                if match_type(event.get("type"), event_types):
                     events.append(event)
         
         # Look in segments (GRID LoL structure)
-        if "seriesState" in timeline_data:
-            state = timeline_data["seriesState"]
+        # Try to find the state object (either at root or under 'seriesState')
+        state = timeline_data.get("seriesState") or (timeline_data if "games" in timeline_data or "titleId" in timeline_data else None)
+        
+        if state:
             for game in state.get("games", []):
                 for segment in game.get("segments", []):
                     # Events might be in segment["events"] or segment["payload"]["events"]
@@ -205,15 +257,18 @@ class Normalizer:
                     if not s_events and "payload" in segment and isinstance(segment["payload"], dict):
                         s_events = segment["payload"].get("events", [])
                     
+                    if not s_events and segment.get("type") == "event":
+                        s_events = [segment.get("payload", {})]
+
                     for event in s_events:
-                        if event_types is None or event.get("type") in event_types:
+                        if match_type(event.get("type"), event_types):
                             events.append(event)
 
         # Look in rounds (VALORANT specific mock/data structure)
         rounds = timeline_data.get("rounds", [])
         for round_data in rounds:
             for event in round_data.get("events", []):
-                if event_types is None or event.get("type") in event_types:
+                if match_type(event.get("type"), event_types):
                     events.append(event)
                     
         if not events:
