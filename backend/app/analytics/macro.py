@@ -16,6 +16,9 @@ class MacroAnalyticsEngine:
         
         # Threshold for a "significant" shift
         threshold = 1000 if game == "valorant" else 500
+        # Lower threshold if we have very few snapshots to ensure we show SOMETHING
+        if len(snapshots_df) < 10:
+            threshold = threshold // 2
         
         significant_shifts = snapshots_df[snapshots_df['gold_diff_delta'].abs() > threshold]
         
@@ -35,9 +38,9 @@ class MacroAnalyticsEngine:
                 obj_events = events_df[events_df['type'].isin(['ELITE_MONSTER_KILL', 'BUILDING_KILL'])]
                 for _, event in obj_events.iterrows():
                     etype = event.get('monsterType') or event.get('buildingType') or event.get('type')
-                    if etype in ['BARON', 'DRAGON', 'INHIBITOR']:
+                    if etype in ['BARON', 'DRAGON', 'INHIBITOR', 'TOWER']:
                         team_id = event.get('teamId')
-                        team_label = "Blue" if team_id == 100 or team_id == "blue" else "Red"
+                        team_label = "Blue" if str(team_id) in ["100", "blue", "team-blue"] else "Red"
                         inflections.append({
                             "timestamp": event.get('timestamp'),
                             "type": "Objective Take",
@@ -45,13 +48,30 @@ class MacroAnalyticsEngine:
                         })
             elif game == "valorant":
                 # Significant Valorant events
-                val_events = events_df[events_df['type'].isin(['SPIKE_PLANTED', 'SPIKE_DEFUSED'])]
+                val_events = events_df[events_df['type'].isin(['SPIKE_PLANTED', 'SPIKE_DEFUSED', 'ROUND_END'])]
                 for _, event in val_events.iterrows():
+                    etype = event.get('type')
                     inflections.append({
                         "timestamp": event.get('timestamp'),
-                        "type": "Spike Event",
-                        "description": f"Spike {event.get('type').split('_')[1].lower()}ed"
+                        "type": "Tactical Event",
+                        "description": f"Critical {etype.replace('_', ' ').lower()} observed"
                     })
+        
+        # 3. Baseline fallback if still empty
+        if not inflections:
+            inflections.append({
+                "timestamp": 0,
+                "type": "Strategic Baseline",
+                "description": f"Analyzing initial {game} team compositions and positioning."
+            })
+            if not snapshots_df.empty:
+                last_snap = snapshots_df.iloc[-1]
+                lead_team = "Blue" if last_snap['gold_diff'] > 0 else "Red"
+                inflections.append({
+                    "timestamp": last_snap['timestamp'],
+                    "type": "Current Momentum",
+                    "description": f"Overall momentum favors Team {lead_team} based on resource accumulation."
+                })
             
         return sorted(inflections, key=lambda x: x['timestamp'])
 

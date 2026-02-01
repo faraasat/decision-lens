@@ -87,6 +87,25 @@ class MicroAnalyticsEngine:
                         "details": f"Player {victim_id} died at {timestamp//1000}s without a trade or assist."
                     })
                     
+        # General performance insights if no specific mistakes
+        if not mistakes and not snapshots_df.empty:
+            latest_frame = snapshots_df.iloc[-1]
+            # Find player with lowest efficiency in each team
+            stats = MicroAnalyticsEngine.compute_player_efficiency(snapshots_df, events_df, game)
+            if stats:
+                for team in (["blue", "red"] if game == "valorant" else [100, 200]):
+                    team_stats = [s for s in stats if s.get('team_id') == team]
+                    if team_stats:
+                        lowest = min(team_stats, key=lambda x: x.get('efficiency_score', 100))
+                        if lowest.get('efficiency_score', 100) < 80:
+                            mistakes.append({
+                                "player_id": lowest['player_id'],
+                                "type": "Suboptimal Resource Use",
+                                "timestamp": latest_frame['timestamp'],
+                                "impact": "Medium",
+                                "details": f"Player {lowest['player_id']} showing lower resource efficiency compared to team average."
+                            })
+
         return mistakes
 
     @staticmethod
@@ -121,8 +140,17 @@ class MicroAnalyticsEngine:
                 except:
                     team_id = "blue" # Fallback
                 
-                credits = latest_frame.get(f'p{pid_str}_credits', 0)
-                loadout = latest_frame.get(f'p{pid_str}_loadout', 0)
+                # Ensure we have numbers for stats
+                def to_num(v):
+                    if isinstance(v, (int, float)): return v
+                    if isinstance(v, dict):
+                        for k in ["total", "amount", "current", "count", "value"]:
+                            if isinstance(v.get(k), (int, float)): return v[k]
+                    try: return float(v)
+                    except: return 0
+
+                credits = to_num(latest_frame.get(f'p{pid_str}_credits', 0))
+                loadout = to_num(latest_frame.get(f'p{pid_str}_loadout', 0))
                 
                 # Use real events if available
                 player_kills = events_df[(events_df['type'] == 'KILL') & (events_df['killerId'].astype(str) == pid_str)] if events_df is not None and not events_df.empty and 'killerId' in events_df.columns else pd.DataFrame()
@@ -153,13 +181,23 @@ class MicroAnalyticsEngine:
                 except:
                     team_id = 100
                     
-                player_gold = latest_frame.get(f'p{pid_str}_gold', 0)
+                # Ensure we have numbers for stats
+                def to_num(v):
+                    if isinstance(v, (int, float)): return v
+                    if isinstance(v, dict):
+                        for k in ["total", "amount", "current", "count", "value"]:
+                            if isinstance(v.get(k), (int, float)): return v[k]
+                    try: return float(v)
+                    except: return 0
+
+                player_gold = to_num(latest_frame.get(f'p{pid_str}_gold', 0))
                 if player_gold == 0: # Fallback if individual gold not in snapshot
-                    player_gold = (latest_frame[f'team100_gold' if team_id == 100 else f'team200_gold'] / 5) * (0.8 + (hash(pid_str) % 5) * 0.1)
+                    team_gold_val = latest_frame.get(f'team100_gold' if team_id == 100 else f'team200_gold', 0)
+                    player_gold = (to_num(team_gold_val) / 5) * (0.8 + (hash(pid_str) % 5) * 0.1)
                 
-                player_minions = latest_frame.get(f'p{pid_str}_minionsKilled', 0)
-                player_jungle = latest_frame.get(f'p{pid_str}_jungleMinionsKilled', 0)
-                player_wards = latest_frame.get(f'p{pid_str}_wardsPlaced', 0)
+                player_minions = to_num(latest_frame.get(f'p{pid_str}_minionsKilled', 0))
+                player_jungle = to_num(latest_frame.get(f'p{pid_str}_jungleMinionsKilled', 0))
+                player_wards = to_num(latest_frame.get(f'p{pid_str}_wardsPlaced', 0))
                 
                 total_cs = player_minions + player_jungle
                 
