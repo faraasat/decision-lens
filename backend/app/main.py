@@ -11,6 +11,7 @@ from app.analytics.micro import micro_analytics
 from app.analytics.macro import macro_analytics
 from app.core.decision_engine import decision_engine
 from app.services.ai_insight_service import ai_insight_service
+from app.core.utils import clean_json_data
 
 # Configure logging
 logging.basicConfig(
@@ -39,6 +40,15 @@ async def health():
     logger.info("Health check endpoint hit")
     return {"status": "healthy"}
 
+@app.get("/api/matches/live")
+async def get_live_matches(game: str = "lol"):
+    try:
+        matches = await grid_service.get_live_matches(game)
+        return matches
+    except Exception as e:
+        logger.error(f"Error fetching live matches: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/simulate")
 async def simulate_state(payload: Dict[str, Any] = Body(...)):
     logger.info("Simulation request received")
@@ -46,17 +56,19 @@ async def simulate_state(payload: Dict[str, Any] = Body(...)):
         current_state = payload.get("current_state", {})
         modifications = payload.get("modifications", {})
         
-        modified_state = current_state.copy()
-        modified_state.update(modifications)
+        # Use what_if_analysis for comprehensive XAI
+        result = decision_engine.what_if_analysis(current_state, modifications)
         
-        prob = decision_engine.predict_win_probability(modified_state)
-        shap_values = decision_engine.explain_decision(modified_state)
+        # Also include SHAP for the new state
+        shap_values = decision_engine.explain_decision(result["modified_state"])
         
-        return {
-            "win_probability": prob,
+        return clean_json_data({
+            "win_probability": result["modified_probability"],
             "shap_explanations": shap_values,
-            "modified_state": modified_state
-        }
+            "modified_state": result["modified_state"],
+            "explanation": result["explanation"],
+            "delta": result["delta"]
+        })
     except Exception as e:
         logger.error(f"Simulation error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -79,10 +91,15 @@ async def get_match_review(match_id: str):
         
         # 2. Normalize
         logger.info(f"Normalizing {game} timeline data")
-        snapshots = normalizer.normalize_timeline(match_details).fillna(0) # Note: match_details contains frames in mock
+        
+        # Merge metadata into timeline if not present for normalizer
+        if "metadata" not in timeline and "metadata" in match_details:
+            timeline["metadata"] = match_details["metadata"]
+            
+        snapshots = normalizer.normalize_timeline(timeline).fillna(0) 
         # Extract multiple event types
         event_types = ["KILL", "SPIKE_PLANTED", "SPIKE_DEFUSED"] if game == "valorant" else ["CHAMPION_KILL", "ELITE_MONSTER_KILL", "BUILDING_KILL"]
-        events = normalizer.extract_events(match_details, event_types).fillna(0)
+        events = normalizer.extract_events(timeline, event_types).fillna(0)
         logger.info(f"Extracted {len(events)} events and {len(snapshots)} snapshots")
         
         # 3. Analyze
@@ -199,26 +216,8 @@ async def get_match_review(match_id: str):
             "timeline_snapshots": enriched_snapshots
         }
         
-        # Final safety check for NaN in the whole structure
-        def clean_nans(obj):
-            if isinstance(obj, float):
-                if math.isnan(obj) or math.isinf(obj):
-                    return 0
-                return float(obj)
-            if isinstance(obj, (np.integer, int)):
-                return int(obj)
-            if isinstance(obj, (np.floating, float)):
-                if math.isnan(obj) or math.isinf(obj):
-                    return 0
-                return float(obj)
-            if isinstance(obj, dict):
-                return {str(k): clean_nans(v) for k, v in obj.items()}
-            if isinstance(obj, list):
-                return [clean_nans(x) for x in obj]
-            return obj
-
         try:
-            cleaned_response = clean_nans(response_data)
+            cleaned_response = clean_json_data(response_data)
             
             import json
             return Response(content=json.dumps(cleaned_response), media_type="application/json")

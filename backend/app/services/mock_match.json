@@ -1,0 +1,96 @@
+{
+  "metadata": {
+    "matchId": "4063857",
+    "gameDuration": 1800000,
+    "teams": [
+      { 
+        "id": 100, 
+        "side": "blue", 
+        "name": "Cloud9",
+        "draft": ["Gwen", "Vi", "Azir", "Kaisa", "Nautilus"]
+      },
+      { 
+        "id": 200, 
+        "side": "red", 
+        "name": "T1",
+        "draft": ["Jayce", "Lee Sin", "Orianna", "Varus", "Karma"]
+      }
+    ]
+  },
+  "frames": [
+    {
+      "timestamp": 0,
+      "participantFrames": {
+        "1": { "totalGold": 500, "xp": 0, "minionsKilled": 0, "jungleMinionsKilled": 0, "wardsPlaced": 0, "position": {"x": 500, "y": 500} },
+        "2": { "totalGold": 500, "xp": 0, "minionsKilled": 0, "jungleMinionsKilled": 0, "wardsPlaced": 0, "position": {"x": 550, "y": 550} },
+        "3": { "totalGold": 500, "xp": 0, "minionsKilled": 0, "jungleMinionsKilled": 0, "wardsPlaced": 0, "position": {"x": 600, "y": 600} },
+        "4": { "totalGold": 500, "xp": 0, "minionsKilled": 0, "jungleMinionsKilled": 0, "wardsPlaced": 0, "position": {"x": 650, "y": 650} },
+        "5": { "totalGold": 500, "xp": 0, "minionsKilled": 0, "jungleMinionsKilled": 0, "wardsPlaced": 0, "position": {"x": 700, "y": 700} },
+        "6": { "totalGold": 500, "xp": 0, "minionsKilled": 0, "jungleMinionsKilled": 0, "wardsPlaced": 0, "position": {"x": 14000, "y": 14000} },
+        "7": { "totalGold": 500, "xp": 0, "minionsKilled": 0, "jungleMinionsKilled": 0, "wardsPlaced": 0, "position": {"x": 13950, "y": 13950} },
+        "8": { "totalGold": 500, "xp": 0, "minionsKilled": 0, "jungleMinionsKilled": 0, "wardsPlaced": 0, "position": {"x": 13900, "y": 13900} },
+        "9": { "totalGold": 500, "xp": 0, "minionsKilled": 0, "jungleMinionsKilled": 0, "wardsPlaced": 0, "position": {"x": 13850, "y": 13850} },
+        "10": { "totalGold": 500, "xp": 0, "minionsKilled": 0, "jungleMinionsKilled": 0, "wardsPlaced": 0, "position": {"x": 13800, "y": 13800} }
+      },
+      "events": []
+    },
+    {
+      "timestamp": 300000,
+      "participantFrames": {
+        "1": { "totalGold": 1600, "xp": 1200, "minionsKilled": 32, "jungleMinionsKilled": 0, "wardsPlaced": 2, "position": {"x": 2000, "y": 12000} },
+        "2": { "totalGold": 1500, "xp": 1100, "minionsKilled": 4, "jungleMinionsKilled": 24, "wardsPlaced": 3, "position": {"x": 7000, "y": 7000} },
+        "3": { "totalGold": 1700, "xp": 1300, "minionsKilled": 38, "jungleMinionsKilled": 0, "wardsPlaced": 2, "position": {"x": 7500, "y": 7500} },
+        "4": { "totalGold": 1400, "xp": 1000, "minionsKilled": 35, "jungleMinionsKilled": 0, "wardsPlaced": 1, "position": {"x": 12000, "y": 2000} },
+        "5": { "totalGold": 1300, "xp": 900, "minionsKilled": 2, "jungleMinionsKilled": 0, "wardsPlaced": 5, "position": {"x": 12500, "y": 1500} },
+        "6": { "totalGold": 1500, "xp": 1200, "minionsKilled": 30, "jungleMinionsKilled": 0, "wardsPlaced": 2, "position": {"x": 2500, "y": 12500} },
+        "7": { "totalGold": 1500, "xp": 1200, "minionsKilled": 5, "jungleMinionsKilled": 20, "wardsPlaced": 3, "position": {"x": 7200, "y": 7200} },
+        "8": { "totalGold": 1500, "xp": 1200, "minionsKilled": 36, "jungleMinionsKilled": 0, "wardsPlaced": 2, "position": {"x": 7800, "y": 7800} },
+        "9": { "totalGold": 1600, "xp": 1200, "minionsKilled": 38, "jungleMinionsKilled": 0, "wardsPlaced": 1, "position": {"x": 12200, "y": 2200} },
+        "10": { "totalGold": 1500, "xp": 1200, "minionsKilled": 4, "jungleMinionsKilled": 0, "wardsPlaced": 6, "position": {"x": 12800, "y": 1800} }
+      },
+      "events": [
+        { "type": "CHAMPION_KILL", "timestamp": 250000, "victimId": 4, "killerId": 9, "assistingParticipantIds": [] },
+        { "type": "WARD_PLACED", "timestamp": 100000, "creatorId": 5, "wardType": "YELLOW" },
+        { "type": "WARD_PLACED", "timestamp": 120000, "creatorId": 10, "wardType": "YELLOW" }
+      ]
+    },
+    {
+      "timestamp": 600000,
+      "participantFrames": {
+        "1": { "totalGold": 3200, "xp": 3200, "minionsKilled": 75, "jungleMinionsKilled": 0, "wardsPlaced": 4 },
+        "2": { "totalGold": 3100, "xp": 3100, "minionsKilled": 10, "jungleMinionsKilled": 48, "wardsPlaced": 6 },
+        "3": { "totalGold": 3300, "xp": 3300, "minionsKilled": 82, "jungleMinionsKilled": 4, "wardsPlaced": 5 },
+        "4": { "totalGold": 2800, "xp": 2600, "minionsKilled": 70, "jungleMinionsKilled": 0, "wardsPlaced": 3 },
+        "5": { "totalGold": 2900, "xp": 2700, "minionsKilled": 15, "jungleMinionsKilled": 0, "wardsPlaced": 12 },
+        "6": { "totalGold": 4500, "xp": 4200, "minionsKilled": 80, "jungleMinionsKilled": 0, "wardsPlaced": 5 },
+        "7": { "totalGold": 4400, "xp": 4200, "minionsKilled": 12, "jungleMinionsKilled": 52, "wardsPlaced": 7 },
+        "8": { "totalGold": 4600, "xp": 4200, "minionsKilled": 88, "jungleMinionsKilled": 0, "wardsPlaced": 6 },
+        "9": { "totalGold": 4300, "xp": 4200, "minionsKilled": 85, "jungleMinionsKilled": 0, "wardsPlaced": 4 },
+        "10": { "totalGold": 4200, "xp": 4200, "minionsKilled": 18, "jungleMinionsKilled": 0, "wardsPlaced": 15 }
+      },
+      "events": [
+        { "type": "ELITE_MONSTER_KILL", "timestamp": 550000, "monsterType": "DRAGON", "killerId": 6, "teamId": 200 },
+        { "type": "CHAMPION_KILL", "timestamp": 580000, "victimId": 1, "killerId": 7, "assistingParticipantIds": [8] }
+      ]
+    },
+    {
+      "timestamp": 900000,
+      "participantFrames": {
+        "1": { "totalGold": 5500, "xp": 5500, "minionsKilled": 120, "jungleMinionsKilled": 4, "wardsPlaced": 8 },
+        "2": { "totalGold": 5400, "xp": 5400, "minionsKilled": 20, "jungleMinionsKilled": 72, "wardsPlaced": 10 },
+        "3": { "totalGold": 5600, "xp": 5600, "minionsKilled": 135, "jungleMinionsKilled": 0, "wardsPlaced": 9 },
+        "4": { "totalGold": 5100, "xp": 5100, "minionsKilled": 115, "jungleMinionsKilled": 0, "wardsPlaced": 6 },
+        "5": { "totalGold": 5200, "xp": 5200, "minionsKilled": 25, "jungleMinionsKilled": 0, "wardsPlaced": 25 },
+        "6": { "totalGold": 7500, "xp": 7200, "minionsKilled": 130, "jungleMinionsKilled": 0, "wardsPlaced": 10 },
+        "7": { "totalGold": 7400, "xp": 7200, "minionsKilled": 25, "jungleMinionsKilled": 80, "wardsPlaced": 12 },
+        "8": { "totalGold": 7600, "xp": 7200, "minionsKilled": 145, "jungleMinionsKilled": 4, "wardsPlaced": 11 },
+        "9": { "totalGold": 7300, "xp": 7200, "minionsKilled": 140, "jungleMinionsKilled": 0, "wardsPlaced": 8 },
+        "10": { "totalGold": 7200, "xp": 7200, "minionsKilled": 30, "jungleMinionsKilled": 0, "wardsPlaced": 30 }
+      },
+      "events": [
+        { "type": "BUILDING_KILL", "timestamp": 850000, "buildingType": "TOWER", "teamId": 200, "killerId": 8 },
+        { "type": "CHAMPION_KILL", "timestamp": 880000, "victimId": 3, "killerId": 6, "assistingParticipantIds": [7, 8, 9, 10] }
+      ]
+    }
+  ]
+}

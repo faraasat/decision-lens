@@ -13,7 +13,7 @@ export default function Home() {
           DECISION<span className="text-primary italic">LENS</span>
         </h1>
         <p className="text-xl text-slate-400 font-medium mb-12 uppercase tracking-[0.2em]">
-          AI Assistant Coach for League of Legends
+          AI Assistant Coach for League of Legends & Valorant
         </p>
 
         <div className="grid grid-cols-3 gap-6 mb-12 text-slate-100">

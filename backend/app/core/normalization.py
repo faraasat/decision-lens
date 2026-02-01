@@ -26,7 +26,10 @@ class Normalizer:
                 "team-red": {"primary": 0, "secondary": 0}
             }
             
-            snapshot = {"timestamp": timestamp}
+            snapshot = {
+                "timestamp": timestamp,
+                "participantFrames": participant_data
+            }
             for pid, data in participant_data.items():
                 if game == "valorant":
                     team_id = "team-blue" if int(pid) <= 5 else "team-red"

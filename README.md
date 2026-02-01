@@ -1,6 +1,6 @@
 # DecisionLens AI Assistant Coach
 
-An AI-powered assistant coach for League of Legends, designed to provide real-time strategic insights and post-match analysis using GRID telemetry.
+An AI-powered assistant coach for League of Legends & Valorant, designed to provide real-time strategic insights and post-match analysis using GRID telemetry.
 
 ## Features
 

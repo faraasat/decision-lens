@@ -82,7 +82,7 @@ class DecisionEngine:
                 current_shap = shap_values[0]
 
         # Return feature contributions
-        explanations = dict(zip(self.feature_names, current_shap))
+        explanations = {k: float(v) for k, v in zip(self.feature_names, current_shap)}
         return explanations
 
     def what_if_analysis(self, current_state: Dict[str, Any], modification: Dict[str, Any]) -> Dict[str, Any]:
@@ -100,8 +100,42 @@ class DecisionEngine:
         return {
             "current_probability": current_prob,
             "modified_probability": modified_prob,
-            "delta": modified_prob - current_prob
+            "delta": modified_prob - current_prob,
+            "modified_state": modified_state,
+            "explanation": self._explain_delta(current_state, modified_state)
         }
+
+    def _explain_delta(self, before: Dict[str, Any], after: Dict[str, Any]) -> str:
+        """Generate a natural language explanation of the probability shift."""
+        # This is a simplified XAI heuristic
+        prob_before = self.predict_win_probability(before)
+        prob_after = self.predict_win_probability(after)
+        delta = prob_after - prob_before
+        
+        shap_before = self.explain_decision(before)
+        shap_after = self.explain_decision(after)
+        
+        # Find which feature shifted the most in impact
+        impact_shifts = {}
+        for feature in self.feature_names:
+            impact_shifts[feature] = shap_after.get(feature, 0) - shap_before.get(feature, 0)
+        
+        top_driver = max(impact_shifts.items(), key=lambda x: abs(x[1]))
+        
+        direction = "increase" if delta > 0 else "decrease"
+        magnitude = abs(delta) * 100
+        
+        feature_readable = top_driver[0].replace("_diff", "").replace("_", " ").title()
+        
+        explanation = f"The {magnitude:.1f}% {direction} in win probability is primarily driven by "
+        explanation += f"the shift in {feature_readable} impact. "
+        
+        if abs(top_driver[1]) > 0.05:
+            explanation += f"This modification heavily optimized the {feature_readable} contribution to the XGBoost outcome."
+        else:
+            explanation += "The cumulative effect of minor stat improvements reached a neural tipping point."
+            
+        return explanation
 
 # Singleton instance
 decision_engine = DecisionEngine()

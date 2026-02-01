@@ -1,0 +1,85 @@
+{
+  "metadata": {
+    "matchId": "val-match-1",
+    "game": "valorant",
+    "map": "Haven",
+    "mode": "standard",
+    "teams": [
+      { 
+        "id": "team-blue", 
+        "side": "defender", 
+        "name": "Sentinels",
+        "draft": ["Jett", "Omen", "Killjoy", "Sova", "Breach"]
+      },
+      { 
+        "id": "team-red", 
+        "side": "attacker", 
+        "name": "Fnatic",
+        "draft": ["Raze", "Astra", "Cypher", "Fade", "Viper"]
+      }
+    ]
+  },
+  "rounds": [
+    {
+      "roundNumber": 1,
+      "winningTeamId": "team-blue",
+      "winMethod": "Elimination",
+      "blueScore": 1,
+      "redScore": 0,
+      "events": [
+        { "type": "KILL", "timestamp": 45000, "killerId": 1, "victimId": 6, "weapon": "Classic", "headshot": true },
+        { "type": "KILL", "timestamp": 55000, "killerId": 2, "victimId": 7, "weapon": "Ghost", "headshot": false },
+        { "type": "SPIKE_PLANTED", "timestamp": 60000, "planterId": 8, "site": "C" },
+        { "type": "KILL", "timestamp": 70000, "killerId": 3, "victimId": 8, "weapon": "Classic", "headshot": true },
+        { "type": "KILL", "timestamp": 80000, "killerId": 4, "victimId": 9, "weapon": "Classic", "headshot": false },
+        { "type": "KILL", "timestamp": 85000, "killerId": 5, "victimId": 10, "weapon": "Classic", "headshot": true },
+        { "type": "SPIKE_DEFUSED", "timestamp": 100000, "defuserId": 1 }
+      ]
+    },
+    {
+      "roundNumber": 2,
+      "winningTeamId": "team-red",
+      "winMethod": "Spike Exploded",
+      "blueScore": 1,
+      "redScore": 1,
+      "events": [
+        { "type": "KILL", "timestamp": 145000, "killerId": 6, "victimId": 1, "weapon": "Stinger", "headshot": true },
+        { "type": "SPIKE_PLANTED", "timestamp": 160000, "planterId": 7, "site": "A" },
+        { "type": "KILL", "timestamp": 180000, "killerId": 7, "victimId": 2, "weapon": "Stinger", "headshot": false },
+        { "type": "KILL", "timestamp": 185000, "killerId": 8, "victimId": 3, "weapon": "Sheriff", "headshot": true }
+      ]
+    }
+  ],
+  "frames": [
+    {
+      "timestamp": 0,
+      "participantFrames": {
+        "1": { "credits": 800, "loadoutValue": 0, "position": {"x": 5000, "y": 5000} },
+        "2": { "credits": 800, "loadoutValue": 0, "position": {"x": 5100, "y": 5100} },
+        "3": { "credits": 800, "loadoutValue": 0, "position": {"x": 5200, "y": 5200} },
+        "4": { "credits": 800, "loadoutValue": 0, "position": {"x": 5300, "y": 5300} },
+        "5": { "credits": 800, "loadoutValue": 0, "position": {"x": 5400, "y": 5400} },
+        "6": { "credits": 800, "loadoutValue": 0, "position": {"x": 10000, "y": 10000} },
+        "7": { "credits": 800, "loadoutValue": 0, "position": {"x": 10100, "y": 10100} },
+        "8": { "credits": 800, "loadoutValue": 0, "position": {"x": 10200, "y": 10200} },
+        "9": { "credits": 800, "loadoutValue": 0, "position": {"x": 10300, "y": 10300} },
+        "10": { "credits": 800, "loadoutValue": 0, "position": {"x": 10400, "y": 10400} }
+      }
+    },
+    {
+      "timestamp": 120000,
+      "participantFrames": {
+        "1": { "credits": 3200, "loadoutValue": 2900, "position": {"x": 6000, "y": 6000} },
+        "2": { "credits": 1500, "loadoutValue": 1600, "position": {"x": 6100, "y": 6100} },
+        "3": { "credits": 1200, "loadoutValue": 1000, "position": {"x": 6200, "y": 6200} },
+        "4": { "credits": 3000, "loadoutValue": 2900, "position": {"x": 6300, "y": 6300} },
+        "5": { "credits": 2800, "loadoutValue": 2100, "position": {"x": 6400, "y": 6400} },
+        "6": { "credits": 1900, "loadoutValue": 1600, "position": {"x": 11000, "y": 11000} },
+        "7": { "credits": 1800, "loadoutValue": 1600, "position": {"x": 11100, "y": 11100} },
+        "8": { "credits": 1700, "loadoutValue": 1600, "position": {"x": 11200, "y": 11200} },
+        "9": { "credits": 1600, "loadoutValue": 1600, "position": {"x": 11300, "y": 11300} },
+        "10": { "credits": 1500, "loadoutValue": 1600, "position": {"x": 11400, "y": 11400} }
+      }
+    }
+  ]
+}

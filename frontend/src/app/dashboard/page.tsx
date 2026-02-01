@@ -45,6 +45,14 @@ export default function Dashboard() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [currentTimeIndex, setCurrentTimeIndex] = useState(-1);
   const [isLive, setIsLive] = useState(false);
+  const [liveMatches, setLiveMatches] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(`http://localhost:8000/api/matches/live?game=${activeGame}`)
+      .then(res => res.json())
+      .then(setLiveMatches)
+      .catch(console.error);
+  }, [activeGame]);
 
   useEffect(() => {
     let interval: any;
@@ -52,7 +60,11 @@ export default function Dashboard() {
       interval = setInterval(() => {
         setCurrentTimeIndex(prev => {
           const next = prev + 1;
-          return next >= data.timeline_snapshots.length ? 0 : next;
+          if (next >= data.timeline_snapshots.length) {
+            setIsLive(false);
+            return prev;
+          }
+          return next;
         });
       }, 5000);
     }
@@ -69,9 +81,15 @@ export default function Dashboard() {
           timestamp: data.timeline_snapshots[currentTimeIndex].timestamp
         },
         player_stats: data.timeline_snapshots[currentTimeIndex].player_stats,
-        shap_explanations: data.timeline_snapshots[currentTimeIndex].shap_explanations
+        shap_explanations: data.timeline_snapshots[currentTimeIndex].shap_explanations,
+        macro_insights: data.macro_insights?.filter((m: any) => m.timestamp <= data.timeline_snapshots[currentTimeIndex].timestamp),
+        micro_insights: data.micro_insights?.filter((m: any) => m.timestamp <= data.timeline_snapshots[currentTimeIndex].timestamp),
+        current_snapshot: data.timeline_snapshots[currentTimeIndex]
       } 
-    : data;
+    : {
+        ...data,
+        current_snapshot: data?.timeline_snapshots?.[data.timeline_snapshots.length - 1]
+      };
 
   const handleSimulate = async (modifications: any) => {
     if (!data?.current_state) return;
@@ -155,7 +173,11 @@ export default function Dashboard() {
     );
   }
 
-  const chartData = data?.timeline_snapshots?.map((s: any) => {
+  const snapshotsToUse = (isLive && currentTimeIndex >= 0) 
+    ? data?.timeline_snapshots?.slice(0, currentTimeIndex + 1) 
+    : data?.timeline_snapshots;
+
+  const chartData = snapshotsToUse?.map((s: any) => {
     const timeInMin = Math.floor(s.timestamp / 60000);
     // Find events at this minute
     const minuteEvents = data?.objectives?.filter((o: any) => Math.floor(o.timestamp / 60000) === timeInMin) || [];
@@ -181,7 +203,7 @@ export default function Dashboard() {
   })).sort((a, b) => Math.abs(b.value) - Math.abs(a.value)) : [];
 
   return (
-    <div className="min-h-screen bg-[#050a14] text-slate-100 cyber-grid p-6 font-sans overflow-hidden relative">
+    <div className="min-h-screen bg-[#050a14] text-slate-100 cyber-grid p-6 font-sans relative">
       <div className="scanline" />
       
       {/* Header */}
@@ -218,34 +240,75 @@ export default function Dashboard() {
         </div>
 
         <div className="flex gap-6">
-           <div className="hidden lg:flex items-center gap-2">
+           <div className="flex items-center gap-2">
              <button 
                onClick={() => {
-                 setIsLive(!isLive);
-                 if (!isLive) setCurrentTimeIndex(0);
+                 const newLiveState = !isLive;
+                 setIsLive(newLiveState);
+                 if (newLiveState) {
+                    setCurrentTimeIndex(0);
+                    setIsSimulated(false);
+                    setSimulationResult(null);
+                 } else {
+                    setCurrentTimeIndex(-1);
+                 }
                }}
                className={cn(
-                 "px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-2",
-                 isLive ? "bg-red-500 text-white animate-pulse" : "bg-slate-800 text-slate-500 hover:text-slate-300"
+                 "px-8 py-3 rounded-full text-xs font-black uppercase transition-all flex items-center gap-3 shadow-lg",
+                 isLive 
+                    ? "bg-red-600 text-white animate-pulse shadow-red-900/40" 
+                    : "bg-primary text-black hover:scale-105 active:scale-95 shadow-primary/20"
                )}
              >
-               <Activity className="w-3 h-3" />
-               {isLive ? "LIVE STREAM ACTIVE" : "GO LIVE"}
+               <Activity className={cn("w-4 h-4", isLive ? "animate-spin" : "")} />
+               {isLive ? "STOP LIVE STREAM" : "START LIVE STREAM"}
              </button>
            </div>
+           
            <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-slate-900/50 border border-slate-800 rounded-lg">
              <div className="text-right">
-               <p className="text-[10px] text-slate-500 uppercase font-bold">Match ID</p>
-               <input 
+               <p className="text-[10px] text-slate-500 uppercase font-bold">GRID Series Source</p>
+               <select 
                  value={matchId} 
                  onChange={(e) => setMatchId(e.target.value)}
-                 className="text-xs font-mono text-primary bg-transparent border-none focus:outline-none w-32"
-               />
+                 className="text-xs font-mono text-primary bg-transparent border-none focus:outline-none w-48 cursor-pointer"
+               >
+                 <optgroup label="System Simulations" className="bg-slate-900 text-slate-500">
+                    <option value="4063857" className="bg-slate-900 text-primary">Mock LoL Match [LPL]</option>
+                    <option value="val-match-1" className="bg-slate-900 text-primary">Mock Val Match [VCT]</option>
+                 </optgroup>
+                 {liveMatches.length > 0 && (
+                   <optgroup label="GRID Live Series Feed" className="bg-slate-900 text-slate-500">
+                    {liveMatches.map((m: any) => (
+                      <option key={m.id} value={m.id} className="bg-slate-900 text-primary">
+                        {m.title} ({m.tournament})
+                      </option>
+                    ))}
+                   </optgroup>
+                 )}
+               </select>
              </div>
+             <button 
+                onClick={() => setMatchId(matchId)}
+                className="p-2 hover:bg-slate-800 rounded-md text-primary transition-colors"
+             >
+                <RefreshCcw className="w-4 h-4" />
+             </button>
            </div>
-          <div className="text-right">
+          <div className="text-right min-w-[150px]">
             <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Decision Status</p>
-            <p className="text-sm font-black text-primary animate-pulse italic">OPTIMIZING</p>
+            <p className={cn(
+              "text-lg font-black animate-pulse italic",
+              isLive ? "text-red-500" : (isSimulated ? "text-amber-500" : "text-primary")
+            )}>
+              {isLive ? (
+                <>LIVE {((currentData?.current_state?.win_prob || 0.5) * 100).toFixed(1)}%</>
+              ) : isSimulated ? (
+                <>SIM {((simulationResult?.win_probability || 0) * 100).toFixed(1)}%</>
+              ) : (
+                <>OPTIMIZING</>
+              )}
+            </p>
           </div>
         </div>
       </header>
@@ -729,11 +792,12 @@ export default function Dashboard() {
                       </div>
 
                       {/* Players */}
-                      {data?.timeline_snapshots?.[data.timeline_snapshots.length - 1]?.participantFrames && 
-                        Object.entries(data.timeline_snapshots[data.timeline_snapshots.length - 1].participantFrames).map(([pid, frame]: any) => {
-                          const x = (frame.position?.x || 0) / 15000 * 100;
-                          const y = 100 - ((frame.position?.y || 0) / 15000 * 100);
-                          const isBlue = parseInt(pid) <= 5;
+                      {currentData?.current_snapshot?.participantFrames && 
+                        Object.entries(currentData.current_snapshot.participantFrames).map(([pid, frame]: any) => {
+                          const scale = currentData?.game === 'valorant' ? 12000 : 15000;
+                          const x = (frame.position?.x || 0) / scale * 100;
+                          const y = 100 - ((frame.position?.y || 0) / scale * 100);
+                          const isBlue = currentData?.game === 'valorant' ? (parseInt(pid) <= 5) : (parseInt(pid) <= 5);
                           return (
                             <motion.div
                               key={pid}
@@ -837,6 +901,17 @@ export default function Dashboard() {
                         </div>
                       </div>
 
+                      {simulationResult?.explanation && (
+                        <div className="p-4 bg-primary/10 border border-primary/30 rounded-xl relative overflow-hidden">
+                           <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
+                           <p className="text-[10px] font-black text-primary uppercase mb-2 flex items-center gap-2">
+                             <BrainCircuit className="w-3 h-3" />
+                             XAI Neural Analysis
+                           </p>
+                           <p className="text-sm text-slate-300 italic">"{simulationResult.explanation}"</p>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-8 border-t border-slate-800">
                         <div className="space-y-4">
                           <div className="flex justify-between">
@@ -902,13 +977,13 @@ export default function Dashboard() {
           <div className="glass-panel p-6 rounded-2xl h-full border-r border-primary/30 flex flex-col">
             <h2 className="text-lg font-bold flex items-center gap-2 mb-6 uppercase tracking-tighter">
               <BrainCircuit className="text-primary w-5 h-5 animate-pulse" />
-              COACH'S INTELLIGENCE
+              {`COACH'S INTELLIGENCE`}
             </h2>
             
             <div className="space-y-6 flex-1 overflow-auto pr-2 custom-scrollbar">
               <div className="bg-slate-900/80 p-5 rounded-xl border border-slate-800 relative shadow-[0_0_15px_rgba(0,0,0,0.5)]">
-                <div className="absolute -top-2 -left-2 bg-primary text-black text-[10px] font-black px-2 py-0.5 italic shadow-[0_0_10px_rgba(0,163,255,0.5)]">NEURAL SUMMARY</div>
-                <div className="text-sm leading-relaxed text-slate-300 prose prose-invert prose-sm max-w-none">
+                <div className="absolute -top-2 -left-2 bg-primary text-white text-[10px] font-black text-6xl px-2 py-4 italic shadow-[0_0_10px_rgba(0,163,255,0.5)] w-full ml-2 rounded-md mt-2">NEURAL SUMMARY</div>
+                <div className="text-sm leading-relaxed text-slate-300 prose prose-invert prose-sm max-w-none mt-10">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {data?.ai_coach_summary}
                   </ReactMarkdown>
@@ -943,23 +1018,38 @@ export default function Dashboard() {
 
               <div className="space-y-4">
                 <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Priority Action Items</h3>
-                {[
-                  { icon: <Shield className="w-4 h-4" />, text: 'Address isolated deaths detected' },
-                  { icon: <Zap className="w-4 h-4" />, text: 'Optimize Dragon setup rotations' },
-                  { icon: <Target className="w-4 h-4" />, text: 'Review mid-game gold lead erosion' }
-                ].map((item, i) => (
-                  <div key={i} className="flex gap-3 items-center p-3 rounded-lg bg-slate-900/30 border border-slate-800/50 hover:border-primary/50 transition-colors group cursor-pointer">
-                    <div className="text-primary group-hover:scale-110 transition-transform">{item.icon}</div>
-                    <p className="text-sm font-medium">{item.text}</p>
-                    <ChevronRight className="w-4 h-4 text-slate-700 ml-auto group-hover:text-primary transition-colors" />
-                  </div>
-                ))}
+                {(currentData?.micro_insights && currentData.micro_insights.length > 0) ? (
+                  currentData.micro_insights.slice(0, 3).map((item: any, i: number) => (
+                    <div key={i} className="flex gap-3 items-center p-3 rounded-lg bg-slate-900/30 border border-slate-800/50 hover:border-primary/50 transition-colors group cursor-pointer">
+                      <div className="text-primary group-hover:scale-110 transition-transform">
+                        {item.type.includes('Death') ? <Shield className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                      </div>
+                      <p className="text-sm font-medium">{item.details}</p>
+                      <ChevronRight className="w-4 h-4 text-slate-700 ml-auto group-hover:text-primary transition-colors" />
+                    </div>
+                  ))
+                ) : (
+                  [
+                    { icon: <Shield className="w-4 h-4" />, text: 'Address isolated deaths detected' },
+                    { icon: <Zap className="w-4 h-4" />, text: 'Optimize Dragon setup rotations' },
+                    { icon: <Target className="w-4 h-4" />, text: 'Review mid-game gold lead erosion' }
+                  ].map((item, i) => (
+                    <div key={i} className="flex gap-3 items-center p-3 rounded-lg bg-slate-900/30 border border-slate-800/50 hover:border-primary/50 transition-colors group cursor-pointer">
+                      <div className="text-primary group-hover:scale-110 transition-transform">{item.icon}</div>
+                      <p className="text-sm font-medium">{item.text}</p>
+                      <ChevronRight className="w-4 h-4 text-slate-700 ml-auto group-hover:text-primary transition-colors" />
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
             <div className="pt-6 mt-auto border-t border-slate-800">
-               <button className="w-full py-4 glass-panel border border-primary/30 text-primary text-[10px] font-black uppercase tracking-[0.3em] hover:bg-primary/10 transition-colors flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,163,255,0.1)]">
-                 EXPOR MATCH REVIEW PDF
+               <button 
+                onClick={() => window.print()}
+                className="w-full py-4 glass-panel border border-primary/30 text-primary text-[10px] font-black uppercase tracking-[0.3em] hover:bg-primary/10 transition-colors flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,163,255,0.1)]"
+               >
+                 EXPORT MATCH REVIEW PDF
                  <Maximize2 className="w-4 h-4" />
                </button>
             </div>

@@ -16,3 +16,10 @@ node_modules
 #!.yarn/cache
 .pnp.*
 .venv
+.idea
+.turbo
+__pycache__
+*logs*
+*.env
+!.example.env
+.DS_Store
