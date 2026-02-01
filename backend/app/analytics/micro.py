@@ -119,6 +119,10 @@ class MicroAnalyticsEngine:
         duration_min = max(latest_frame['timestamp'] / 60000, 1)
         
         stats = []
+
+        participant_frames = latest_frame.get("participantFrames")
+        if not isinstance(participant_frames, dict):
+            participant_frames = {}
         
         # Instead of range(1, 11), let's find all p{id}_gold or p{id}_credits keys
         p_ids = set()
@@ -126,10 +130,24 @@ class MicroAnalyticsEngine:
             if col.startswith('p') and ('_gold' in col or '_credits' in col):
                 p_id = col.split('_')[0][1:]
                 p_ids.add(p_id)
+
+        # If we still don't have p_ids, try participantFrames keys
+        if not p_ids and participant_frames:
+            p_ids = set(str(pid) for pid in participant_frames.keys())
         
         # If no players found in columns, try to use p1-p10 as fallback
         if not p_ids:
             p_ids = [str(i) for i in range(1, 11)]
+
+        def get_participant(pid_str: str) -> Dict[str, Any]:
+            if not participant_frames:
+                return {}
+            return (
+                participant_frames.get(pid_str)
+                or participant_frames.get(str(pid_str))
+                or participant_frames.get(int(pid_str))
+                or {}
+            )
             
         for pid_str in sorted(list(p_ids)):
             if game == "valorant":
@@ -151,6 +169,12 @@ class MicroAnalyticsEngine:
 
                 credits = to_num(latest_frame.get(f'p{pid_str}_credits', 0))
                 loadout = to_num(latest_frame.get(f'p{pid_str}_loadout', 0))
+
+                if credits == 0 or loadout == 0:
+                    p_frame = get_participant(pid_str)
+                    if p_frame:
+                        credits = credits or to_num(p_frame.get("credits") or p_frame.get("money") or p_frame.get("netWorth") or p_frame.get("stats", {}).get("credits"))
+                        loadout = loadout or to_num(p_frame.get("loadoutValue") or p_frame.get("stats", {}).get("loadoutValue"))
                 
                 # Use real events if available
                 player_kills = events_df[(events_df['type'] == 'KILL') & (events_df['killerId'].astype(str) == pid_str)] if events_df is not None and not events_df.empty and 'killerId' in events_df.columns else pd.DataFrame()
@@ -191,6 +215,9 @@ class MicroAnalyticsEngine:
                     except: return 0
 
                 player_gold = to_num(latest_frame.get(f'p{pid_str}_gold', 0))
+                p_frame = get_participant(pid_str)
+                if player_gold == 0 and p_frame:
+                    player_gold = to_num(p_frame.get("totalGold") or p_frame.get("gold") or p_frame.get("stats", {}).get("gold"))
                 if player_gold == 0: # Fallback if individual gold not in snapshot
                     team_gold_val = latest_frame.get(f'team100_gold' if team_id == 100 else f'team200_gold', 0)
                     player_gold = (to_num(team_gold_val) / 5) * (0.8 + (hash(pid_str) % 5) * 0.1)
@@ -198,6 +225,14 @@ class MicroAnalyticsEngine:
                 player_minions = to_num(latest_frame.get(f'p{pid_str}_minionsKilled', 0))
                 player_jungle = to_num(latest_frame.get(f'p{pid_str}_jungleMinionsKilled', 0))
                 player_wards = to_num(latest_frame.get(f'p{pid_str}_wardsPlaced', 0))
+
+                if p_frame:
+                    if player_minions == 0:
+                        player_minions = to_num(p_frame.get("minionsKilled") or p_frame.get("unitKills") or p_frame.get("stats", {}).get("minionsKilled"))
+                    if player_jungle == 0:
+                        player_jungle = to_num(p_frame.get("jungleMinionsKilled") or p_frame.get("stats", {}).get("jungleMinionsKilled"))
+                    if player_wards == 0:
+                        player_wards = to_num(p_frame.get("wardsPlaced") or p_frame.get("visionScore") or p_frame.get("stats", {}).get("wardsPlaced") or p_frame.get("stats", {}).get("visionScore"))
                 
                 total_cs = player_minions + player_jungle
                 
@@ -217,8 +252,6 @@ class MicroAnalyticsEngine:
                     "total_cs": total_cs,
                     "kills": kills_count
                 })
-            
-        return stats
             
         return stats
 

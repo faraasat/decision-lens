@@ -48,6 +48,49 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const extractPosition = (pos: any) => {
+  if (!pos) return null;
+  if (Array.isArray(pos) && pos.length >= 2) {
+    return { x: pos[0], y: pos[1] };
+  }
+  if (typeof pos === "object") {
+    if ("x" in pos && "y" in pos) return { x: pos.x, y: pos.y };
+    if ("X" in pos && "Y" in pos) return { x: pos.X, y: pos.Y };
+    if ("position" in pos) return extractPosition(pos.position);
+  }
+  return null;
+};
+
+const getPlayerPosition = (
+  pid: string,
+  frame: any,
+  snapshot: any,
+  game: string,
+) => {
+  const candidate =
+    frame?.position ||
+    frame?.stats?.position ||
+    snapshot?.[`p${pid}_position`];
+
+  const pos = extractPosition(candidate);
+  if (!pos) return null;
+
+  const x = Number(pos.x);
+  const y = Number(pos.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+  const baseScale = game === "valorant" ? 12000 : 15000;
+  const scale = Math.max(baseScale, Math.abs(x), Math.abs(y)) || baseScale;
+
+  const xPct = clamp((x / scale) * 100, 0, 100);
+  const yPct = clamp(100 - (y / scale) * 100, 0, 100);
+
+  return { xPct, yPct };
+};
+
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("macro");
@@ -155,6 +198,7 @@ export default function Dashboard() {
 
             return {
               ...baseData,
+              metadata: newData.metadata || baseData.metadata,
               game: message.game || baseData.game,
               timeline_snapshots: updatedSnapshots,
               current_state: newData,
@@ -1385,7 +1429,9 @@ export default function Dashboard() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="bg-slate-900/40 p-6 rounded-2xl border border-slate-800">
                       <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6">
-                        Gold Distribution
+                        {currentData?.game === "valorant"
+                          ? "Economy Distribution"
+                          : "Gold Distribution"}
                       </h3>
                       <div className="h-[200px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
@@ -1419,13 +1465,17 @@ export default function Dashboard() {
                         </ResponsiveContainer>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-4 text-center">
-                        Relative Gold Advantage over Time
+                        {currentData?.game === "valorant"
+                          ? "Relative Economy Advantage over Time"
+                          : "Relative Gold Advantage over Time"}
                       </p>
                     </div>
 
                     <div className="bg-slate-900/40 p-6 rounded-2xl border border-slate-800">
                       <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6">
-                        Objective Control Rate
+                        {currentData?.game === "valorant"
+                          ? "Spike & Site Control Rate"
+                          : "Objective Control Rate"}
                       </h3>
                       <div className="space-y-4">
                         {(() => {
@@ -1523,11 +1573,13 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  <div className="p-6 rounded-2xl bg-blue-500/5 border border-blue-500/20">
+                    <div className="p-6 rounded-2xl bg-blue-500/5 border border-blue-500/20">
                     <div className="flex items-center gap-3 mb-4">
                       <Activity className="text-primary w-5 h-5" />
                       <h3 className="text-sm font-bold text-slate-100 uppercase tracking-widest">
-                        Team Synergy Index
+                        {currentData?.game === "valorant"
+                          ? "Round Synergy Index"
+                          : "Team Synergy Index"}
                       </h3>
                     </div>
                     <div className="grid grid-cols-4 gap-4">
@@ -1734,11 +1786,14 @@ export default function Dashboard() {
                       Object.entries(
                         currentData.current_snapshot.participantFrames,
                       ).map(([pid, frame]: any) => {
-                        const scale =
-                          currentData?.game === "valorant" ? 12000 : 15000;
-                        const x = ((frame.position?.x || 0) / scale) * 100;
-                        const y =
-                          100 - ((frame.position?.y || 0) / scale) * 100;
+                        const position = getPlayerPosition(
+                          pid,
+                          frame,
+                          currentData?.current_snapshot,
+                          currentData?.game || "lol",
+                        );
+                        if (!position) return null;
+                        const { xPct, yPct } = position;
                         const isBlue =
                           frame.teamId === 100 || 
                           frame.teamId === "team-blue" || 
@@ -1754,7 +1809,7 @@ export default function Dashboard() {
                               stiffness: 300,
                               damping: 30,
                             }}
-                            animate={{ left: `${x}%`, top: `${y}%` }}
+                            animate={{ left: `${xPct}%`, top: `${yPct}%` }}
                             className="absolute w-6 h-6 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center z-20"
                           >
                             <div
@@ -1790,7 +1845,9 @@ export default function Dashboard() {
                   </div>
                   <div className="text-center">
                     <p className="text-sm font-black text-slate-100 uppercase tracking-[0.4em] italic">
-                      Tactical Rift Overlay
+                      {currentData?.game === "valorant"
+                        ? "Tactical Site Overlay"
+                        : "Tactical Rift Overlay"}
                     </p>
                     <p className="text-[10px] text-primary font-mono mt-2 uppercase opacity-50">
                       Syncing positioning telemetry via GRID Neural Link...

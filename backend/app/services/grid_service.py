@@ -127,9 +127,10 @@ class GridService:
         
         game = "lol"
         if title_name:
-            if "Valorant" in title_name.lower():
+            title_lower = title_name.lower()
+            if "valorant" in title_lower:
                 game = "valorant"
-            elif "League of Legends" in title_name.lower():
+            elif "league of legends" in title_lower or "lol" in title_lower:
                 game = "lol"
         
         # If we still don't know, try titleId

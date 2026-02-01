@@ -61,6 +61,7 @@ class LiveStreamService:
             full_data = await grid_service.get_match_timeline(match_id)
             snapshots = normalizer.normalize_timeline(full_data)
             game = full_data.get("metadata", {}).get("game", "lol")
+            metadata = full_data.get("metadata", {})
 
             # Extract events for micro analytics
             event_types = ["KILL", "SPIKE_PLANTED", "SPIKE_DEFUSED"] if game == "valorant" else ["CHAMPION_KILL", "ELITE_MONSTER_KILL", "BUILDING_KILL"]
@@ -74,7 +75,7 @@ class LiveStreamService:
 
             if not has_meaningful_data:
                 logger.warning(f"No meaningful timeline data for match {match_id} (found {len(snapshots)} snapshots). Falling back to mock stream.")
-                await self._run_mock_stream(match_id, game)
+                await self._run_mock_stream(match_id, game, metadata)
                 return
 
             # 2. Stream snapshots one by one to simulate real-time
@@ -107,6 +108,7 @@ class LiveStreamService:
                 state['micro_insights'] = micro_insights
                 state['objectives'] = objectives
                 state['draft_analysis'] = draft_analysis
+                state['metadata'] = metadata
 
                 # Generate dynamic AI summary
                 what_if_scenarios = [{
@@ -150,7 +152,7 @@ class LiveStreamService:
             "team200_kills": state.get("team200_kills", 0)
         }
 
-    async def _run_mock_stream(self, match_id: str, game: str = "lol"):
+    async def _run_mock_stream(self, match_id: str, game: str = "lol", metadata: Optional[Dict[str, Any]] = None):
         """Generates realistic mock data if real match data is unavailable."""
         logger.info(f"Starting mock stream for match {match_id}, game={game}")
         gold_diff = 0
@@ -218,13 +220,15 @@ class LiveStreamService:
             player_stats = micro_analytics.compute_player_efficiency(current_df, events_df, game=game)
             micro_insights = micro_analytics.analyze_player_mistakes(events_df, current_df, game=game)
             objectives = macro_analytics.evaluate_objective_control(events_df, game=game)
-            draft_analysis = {}
+            draft_analysis = macro_analytics.analyze_draft_synergy(metadata or {})
 
             state['macro_insights'] = macro_insights
             state['player_stats'] = player_stats
             state['micro_insights'] = micro_insights
             state['objectives'] = objectives
             state['draft_analysis'] = draft_analysis
+            if metadata is not None:
+                state['metadata'] = metadata
 
             # Generate dynamic AI summary for mock
             what_if_scenarios = [{

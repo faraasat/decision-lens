@@ -54,6 +54,7 @@ query GetSeriesDetails($id: ID!) {
     series(id: $id) {
         id
         title {
+            id
             name
         }
         tournament {
