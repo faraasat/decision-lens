@@ -1,0 +1,12 @@
+{
+  "name": "sky-is-the-limit",
+  "packageManager": "yarn@4.12.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "devDependencies": {
+    "turbo": "^2.7.3"
+  }
+}
