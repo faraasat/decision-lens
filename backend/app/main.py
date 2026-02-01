@@ -67,11 +67,11 @@ async def websocket_endpoint(websocket: WebSocket):
         live_stream_service.disconnect(websocket)
 
 @app.post("/api/live/start/{match_id}")
-async def start_live_stream(match_id: str):
+async def start_live_stream(match_id: str, game: str | None = None):
     import asyncio
     # Run the stream in the background
-    asyncio.create_task(live_stream_service.start_live_stream(match_id))
-    return {"status": "started", "match_id": match_id}
+    asyncio.create_task(live_stream_service.start_live_stream(match_id, game))
+    return {"status": "started", "match_id": match_id, "game": game}
 
 @app.post("/api/live/stop")
 async def stop_live_stream():
@@ -103,7 +103,7 @@ async def simulate_state(payload: Dict[str, Any] = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/match/{match_id}/review")
-async def get_match_review(match_id: str):
+async def get_match_review(match_id: str, game: str | None = None):
     logger.info(f"Fetching review for match_id: {match_id}")
     try:
         # Simulate delay for realism
@@ -115,7 +115,9 @@ async def get_match_review(match_id: str):
         match_data = await grid_service.get_match_timeline(match_id)
         
         metadata = match_data.get("metadata", {})
-        game = metadata.get("game", "lol")
+        detected_game = metadata.get("game", "lol")
+        game = game or detected_game
+        metadata["game"] = game
         
         # 2. Normalize
         logger.info(f"Normalizing {game} timeline data")

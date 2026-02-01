@@ -142,7 +142,10 @@ export default function Dashboard() {
       ws.onopen = () => {
         console.log("Connected to Live Feed");
         // Ask backend to start streaming this match
-        fetch(`http://localhost:8000/api/live/start/${matchId}`, { method: "POST" });
+        fetch(
+          `http://localhost:8000/api/live/start/${matchId}?game=${activeGame}`,
+          { method: "POST" },
+        );
       };
 
       ws.onmessage = (event) => {
@@ -253,6 +256,7 @@ export default function Dashboard() {
     const snap = data.timeline_snapshots[currentTimeIndex];
     currentData = {
       ...data,
+      game: activeGame || data?.game || "lol",
       current_state: {
         ...(data.current_state || {}),
         win_prob: snap.win_prob ?? 0.5,
@@ -282,6 +286,7 @@ export default function Dashboard() {
         : undefined;
     currentData = {
       ...data,
+      game: activeGame || data?.game || "lol",
       current_snapshot: lastSnap,
       current_state: {
         ...(data?.current_state || {}),
@@ -344,7 +349,7 @@ export default function Dashboard() {
     setError(null);
     setIsSimulated(false);
     setSimulationResult(null);
-    fetch(`http://localhost:8000/api/match/${matchId}/review`)
+    fetch(`http://localhost:8000/api/match/${matchId}/review?game=${activeGame}`)
       .then((res) => {
         if (!res.ok) throw new Error(`Backend error: ${res.statusText}`);
         return res.json();
@@ -500,7 +505,7 @@ export default function Dashboard() {
               DECISION<span className="text-primary italic">LENS</span>
             </h1>
             <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">
-              Assistant Coach v1.0 // Cloud9 Edition
+              Assistant Coach v1.0
             </p>
           </div>
         </div>
@@ -857,19 +862,19 @@ export default function Dashboard() {
                   {tab === "efficiency"
                     ? "Player Stats"
                     : tab === "vision"
-                      ? data?.game === "valorant"
+                      ? (currentData?.game || activeGame) === "valorant"
                         ? "Economy"
                         : "Vision & Control"
                       : tab === "team"
                         ? "Team Performance"
                         : tab === "draft"
-                          ? data?.game === "valorant"
+                          ? (currentData?.game || activeGame) === "valorant"
                             ? "Agent Selection"
                             : "Draft Analysis"
                           : tab === "map"
                             ? "Live Map"
                             : tab === "macro"
-                              ? data?.game === "valorant"
+                              ? (currentData?.game || activeGame) === "valorant"
                                 ? "Round Review"
                                 : "Macro Review"
                               : `${tab} Review`}
@@ -1144,7 +1149,7 @@ export default function Dashboard() {
                             type="monotone"
                             dataKey="goldDiff"
                             name={
-                              data?.game === "valorant"
+                              (currentData?.game || activeGame) === "valorant"
                                 ? "Econ Delta"
                                 : "Vision Control Index"
                             }
@@ -1218,16 +1223,24 @@ export default function Dashboard() {
                           <th className="pb-4">Player</th>
                           <th className="pb-4">Team</th>
                           <th className="pb-4 text-right">
-                            {data?.game === "valorant" ? "ACS" : "GPM"}
+                            {(currentData?.game || activeGame) === "valorant"
+                              ? "ACS"
+                              : "GPM"}
                           </th>
                           <th className="pb-4 text-right">
-                            {data?.game === "valorant" ? "ADR" : "Gold"}
+                            {(currentData?.game || activeGame) === "valorant"
+                              ? "ADR"
+                              : "Gold"}
                           </th>
                           <th className="pb-4 text-right">
-                            {data?.game === "valorant" ? "Credits" : "Total CS"}
+                            {(currentData?.game || activeGame) === "valorant"
+                              ? "Credits"
+                              : "Total CS"}
                           </th>
                           <th className="pb-4 text-right">
-                            {data?.game === "valorant" ? "HS %" : "CS/M"}
+                            {(currentData?.game || activeGame) === "valorant"
+                              ? "HS %"
+                              : "CS/M"}
                           </th>
                           <th className="pb-4 text-right">Efficiency</th>
                         </tr>
@@ -1720,7 +1733,7 @@ export default function Dashboard() {
                             <div className="flex-1">
                               <p className="font-bold text-sm">{champ}</p>
                               <p className="text-[10px] text-slate-500 uppercase">
-                                {data?.game === "valorant"
+                                {(currentData?.game || activeGame) === "valorant"
                                   ? [
                                       "DUELIST",
                                       "CONTROLLER",
@@ -1974,7 +1987,9 @@ export default function Dashboard() {
                         <div className="space-y-4">
                           <div className="flex justify-between">
                             <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">
-                              Gold Differential
+                              {(currentData?.game || activeGame) === "valorant"
+                                ? "Economy Differential"
+                                : "Gold Differential"}
                             </p>
                             <p className="text-xs font-mono text-primary">
                               {simulationResult?.modified_state?.gold_diff ||
@@ -2002,7 +2017,9 @@ export default function Dashboard() {
                         <div className="space-y-4">
                           <div className="flex justify-between">
                             <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest">
-                              {data?.game === "valorant" ? "Spike Control" : "Objective Lead"}
+                              {(currentData?.game || activeGame) === "valorant"
+                                ? "Spike Control"
+                                : "Objective Lead"}
                             </p>
                             <p className="text-xs font-mono text-primary">
                               {simulationResult?.modified_state?.dragons_diff ||
@@ -2108,7 +2125,7 @@ export default function Dashboard() {
                 </div>
                 <div className="text-sm leading-relaxed text-slate-300 prose prose-invert prose-sm max-w-none mt-10">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {data?.ai_coach_summary}
+                    {currentData?.ai_coach_summary || data?.ai_coach_summary}
                   </ReactMarkdown>
                 </div>
               </div>
@@ -2190,20 +2207,37 @@ export default function Dashboard() {
                           <ChevronRight className="w-4 h-4 text-slate-700 ml-auto group-hover:text-primary transition-colors" />
                         </div>
                       ))
-                  : [
-                      {
-                        icon: <Shield className="w-4 h-4" />,
-                        text: "Address isolated deaths detected",
-                      },
-                      {
-                        icon: <Zap className="w-4 h-4" />,
-                        text: "Optimize Dragon setup rotations",
-                      },
-                      {
-                        icon: <Target className="w-4 h-4" />,
-                        text: "Review mid-game gold lead erosion",
-                      },
-                    ].map((item, i) => (
+                  : (
+                      (currentData?.game || activeGame) === "valorant"
+                        ? [
+                            {
+                              icon: <Shield className="w-4 h-4" />,
+                              text: "Trade-fall discipline on entry picks",
+                            },
+                            {
+                              icon: <Zap className="w-4 h-4" />,
+                              text: "Tighten mid-round spacing for site hits",
+                            },
+                            {
+                              icon: <Target className="w-4 h-4" />,
+                              text: "Stabilize economy swing after eco rounds",
+                            },
+                          ]
+                        : [
+                            {
+                              icon: <Shield className="w-4 h-4" />,
+                              text: "Address isolated deaths detected",
+                            },
+                            {
+                              icon: <Zap className="w-4 h-4" />,
+                              text: "Optimize dragon setup rotations",
+                            },
+                            {
+                              icon: <Target className="w-4 h-4" />,
+                              text: "Review mid-game gold lead erosion",
+                            },
+                          ]
+                    ).map((item, i) => (
                       <div
                         key={i}
                         className="flex gap-3 items-center p-3 rounded-lg bg-slate-900/30 border border-slate-800/50 hover:border-primary/50 transition-colors group cursor-pointer"

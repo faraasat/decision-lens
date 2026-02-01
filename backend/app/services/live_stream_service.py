@@ -43,7 +43,7 @@ class LiveStreamService:
             except Exception as e:
                 logger.error(f"Error broadcasting to client: {e}")
 
-    async def start_live_stream(self, match_id: str):
+    async def start_live_stream(self, match_id: str, override_game: Optional[str] = None):
         """
         In a real production app, this would connect to GRID WebSocket.
         For this hackathon, we simulate the real-time feed by fetching 
@@ -60,8 +60,10 @@ class LiveStreamService:
             # 1. Try to get initial state/timeline
             full_data = await grid_service.get_match_timeline(match_id)
             snapshots = normalizer.normalize_timeline(full_data)
-            game = full_data.get("metadata", {}).get("game", "lol")
+            game = override_game or full_data.get("metadata", {}).get("game", "lol")
             metadata = full_data.get("metadata", {})
+            if override_game:
+                metadata["game"] = override_game
 
             # Extract events for micro analytics
             event_types = ["KILL", "SPIKE_PLANTED", "SPIKE_DEFUSED"] if game == "valorant" else ["CHAMPION_KILL", "ELITE_MONSTER_KILL", "BUILDING_KILL"]
