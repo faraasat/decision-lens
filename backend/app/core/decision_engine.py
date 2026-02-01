@@ -53,6 +53,15 @@ class DecisionEngine:
         prob = self.model.predict_proba(df)[0][1]
         return float(prob)
 
+    def predict_bulk_probabilities(self, game_states: List[Dict[str, Any]]) -> List[float]:
+        if self.model is None:
+            self.train_mock_model()
+        if not game_states:
+            return []
+        df = pd.DataFrame(game_states, columns=self.feature_names).fillna(0)
+        probs = self.model.predict_proba(df)[:, 1]
+        return [float(p) for p in probs]
+
     def explain_decision(self, game_state: Dict[str, Any]) -> Dict[str, float]:
         """Use SHAP to explain why the win probability is what it is."""
         if self.explainer is None:
@@ -61,8 +70,19 @@ class DecisionEngine:
         df = pd.DataFrame([game_state], columns=self.feature_names).fillna(0)
         shap_values = self.explainer.shap_values(df)
         
+        # In newer SHAP versions for binary classification, shap_values might be a list
+        if isinstance(shap_values, list):
+            # For binary classification, index 1 is for the positive class
+            current_shap = shap_values[1][0] if len(shap_values) > 1 else shap_values[0][0]
+        else:
+            # If it's a single array, it might be (n_samples, n_features) or (n_samples, n_features, n_classes)
+            if len(shap_values.shape) == 3:
+                current_shap = shap_values[0, :, 1]
+            else:
+                current_shap = shap_values[0]
+
         # Return feature contributions
-        explanations = dict(zip(self.feature_names, shap_values[0]))
+        explanations = dict(zip(self.feature_names, current_shap))
         return explanations
 
     def what_if_analysis(self, current_state: Dict[str, Any], modification: Dict[str, Any]) -> Dict[str, Any]:
