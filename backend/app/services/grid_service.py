@@ -149,25 +149,49 @@ class GridService:
         
         # Find where the game state is (seriesState or root)
         state = timeline_data.get("seriesState") or timeline_data
+        
+        # Collect all unique teams from across the data structure
         timeline_teams = state.get("teams", [])
-        if not timeline_teams and "games" in state and state["games"]:
-            # Try latest game
-            timeline_teams = state["games"][-1].get("teams", [])
+        if "games" in state:
+            for g in state["games"]:
+                for t in g.get("teams", []):
+                    if not any(et.get("name") == t.get("name") for et in timeline_teams):
+                        timeline_teams.append(t)
 
         if base_teams:
             for i, t in enumerate(base_teams):
                 draft = []
-                # Try to find matching team in timeline to get draft
                 team_name = t.get("base", {}).get("name")
+                
+                # Try to find matching team and extract characters
                 matching_t = next((tt for tt in timeline_teams if tt.get("name") == team_name), None)
                 if not matching_t and i < len(timeline_teams):
                     matching_t = timeline_teams[i]
                 
                 if matching_t:
+                    # Method 1: from players
                     for p in matching_t.get("players", []):
                         char = p.get("champion") or p.get("agent")
-                        if char:
+                        if char and char.get("name"):
                             draft.append(char.get("name"))
+                    
+                    # Method 2: from draftActions (fallback)
+                    if not draft and "draftActions" in matching_t:
+                        for action in matching_t["draftActions"]:
+                            if action.get("type") == "PICK":
+                                char = action.get("champion") or action.get("agent")
+                                if char and char.get("name"):
+                                    draft.append(char.get("name"))
+
+                # Method 3: Search all games in state for this team's draft
+                if not draft and "games" in state:
+                    for g in state["games"]:
+                        for gt in g.get("teams", []):
+                            if gt.get("name") == team_name:
+                                for p in gt.get("players", []):
+                                    char = p.get("champion") or p.get("agent")
+                                    if char and char.get("name"):
+                                        draft.append(char.get("name"))
                 
                 team_list.append({
                     "id": 100 if i == 0 else 200,
@@ -175,7 +199,7 @@ class GridService:
                     "code": t.get("base", {}).get("code"),
                     "roster": t.get("roster", []),
                     "side": "blue" if i == 0 else "red",
-                    "draft": draft
+                    "draft": list(set(draft)) if draft else []
                 })
         elif timeline_teams:
             # Fallback to timeline teams if details missing
@@ -183,14 +207,21 @@ class GridService:
                 draft = []
                 for p in t.get("players", []):
                     char = p.get("champion") or p.get("agent")
-                    if char:
+                    if char and char.get("name"):
                         draft.append(char.get("name"))
                 
+                if not draft and "draftActions" in t:
+                    for action in t["draftActions"]:
+                        if action.get("type") == "PICK":
+                            char = action.get("champion") or action.get("agent")
+                            if char and char.get("name"):
+                                draft.append(char.get("name"))
+
                 team_list.append({
                     "id": 100 if i == 0 else 200,
                     "name": t.get("name", f"Team {i+1}"),
                     "side": "blue" if i == 0 else "red",
-                    "draft": draft
+                    "draft": list(set(draft)) if draft else []
                 })
 
         result = {

@@ -126,85 +126,10 @@ async def get_match_review(match_id: str):
         events = normalizer.extract_events(match_data, event_types).fillna(0)
         logger.info(f"Extracted {len(events)} events and {len(snapshots)} snapshots")
         
-        # If no snapshots, try to create multiple from stats or demo
-        if snapshots.empty:
-            logger.info("Snapshots empty, attempting fallback")
-            stats = match_data.get("stats", {})
-            games = stats.get("games", []) if isinstance(stats, dict) else []
-            
-            if games:
-                latest = games[-1]
-                team_stats = latest.get("teamStats", [])
-                
-                blue_gold = 0
-                red_gold = 0
-                for ts in team_stats:
-                    if ts.get("teamId") in [100, "team-blue", 340]: # Common blue team IDs
-                        blue_gold = ts.get("goldEarned", 0)
-                    else:
-                        red_gold = ts.get("goldEarned", 0)
-                
-                # Create multiple snapshots to show a trend
-                duration = latest.get("duration", 0) * 1000 or 1200000
-                snapshots = pd.DataFrame([
-                    {
-                        "timestamp": duration * 0.5,
-                        "gold_diff": (blue_gold - red_gold) * 0.4,
-                        "xp_diff": (blue_gold - red_gold) * 0.3,
-                        "team100_gold": blue_gold * 0.45,
-                        "team200_gold": red_gold * 0.45,
-                        "dragons_diff": 0, "towers_diff": 0, "barons_diff": 0,
-                        "team100_kills": 2, "team200_kills": 1
-                    },
-                    {
-                        "timestamp": duration * 0.8,
-                        "gold_diff": (blue_gold - red_gold) * 0.7,
-                        "xp_diff": (blue_gold - red_gold) * 0.6,
-                        "team100_gold": blue_gold * 0.75,
-                        "team200_gold": red_gold * 0.75,
-                        "dragons_diff": 1, "towers_diff": 1, "barons_diff": 0,
-                        "team100_kills": 5, "team200_kills": 3
-                    },
-                    {
-                        "timestamp": duration,
-                        "gold_diff": blue_gold - red_gold,
-                        "xp_diff": (blue_gold - red_gold) * 0.8,
-                        "team100_gold": blue_gold,
-                        "team200_gold": red_gold,
-                        "dragons_diff": 1, "towers_diff": 2, "barons_diff": 0,
-                        "team100_kills": sum(p.get("kills", 0) for p in latest.get("playerStats", []) if p.get("teamId") in [100, 340]),
-                        "team200_kills": sum(p.get("kills", 0) for p in latest.get("playerStats", []) if p.get("teamId") not in [100, 340])
-                    }
-                ])
-                logger.info("Created trend snapshots from stats")
-            else:
-                # Absolute fallback: Create a realistic demo trend
-                logger.info("No stats available, creating demo trend")
-                snapshots = pd.DataFrame([
-                    {"timestamp": 600000, "gold_diff": 500, "xp_diff": 300, "team100_gold": 15000, "team200_gold": 14500, "dragons_diff": 0, "towers_diff": 0, "barons_diff": 0, "team100_kills": 3, "team200_kills": 2},
-                    {"timestamp": 900000, "gold_diff": 1200, "xp_diff": 800, "team100_gold": 22000, "team200_gold": 20800, "dragons_diff": 1, "towers_diff": 1, "barons_diff": 0, "team100_kills": 7, "team200_kills": 5},
-                    {"timestamp": 1200000, "gold_diff": 2500, "xp_diff": 1500, "team100_gold": 32000, "team200_gold": 29500, "dragons_diff": 1, "towers_diff": 2, "barons_diff": 0, "team100_kills": 12, "team200_kills": 8}
-                ])
-            
-            # If we used fallback for snapshots, ensure we have some events for Micro Review
-            if events.empty:
-                logger.info("Events empty, creating mock events for analysis")
-                if game == "valorant":
-                    mock_events = [
-                        {"type": "KILL", "timestamp": 200000, "killerId": "blue1", "victimId": "red1", "headshot": True},
-                        {"type": "KILL", "timestamp": 400000, "killerId": "red2", "victimId": "blue2", "headshot": False},
-                        {"type": "SPIKE_PLANTED", "timestamp": 600000, "site": "A", "planterId": "blue3"},
-                        {"type": "KILL", "timestamp": 800000, "killerId": "blue1", "victimId": "red2", "headshot": True},
-                    ]
-                else:
-                    mock_events = [
-                        {"type": "CHAMPION_KILL", "timestamp": 300000, "killerId": 1, "victimId": 6},
-                        {"type": "CHAMPION_KILL", "timestamp": 500000, "killerId": 7, "victimId": 2},
-                        {"type": "ELITE_MONSTER_KILL", "timestamp": 700000, "monsterType": "DRAGON", "teamId": 100},
-                        {"type": "BUILDING_KILL", "timestamp": 900000, "buildingType": "TOWER", "teamId": 100},
-                        {"type": "CHAMPION_KILL", "timestamp": 1100000, "killerId": 3, "victimId": 8},
-                    ]
-                events = pd.DataFrame(mock_events)
+        # If events are still empty and we have no snapshots, don't create mock events
+        if events.empty and snapshots.empty:
+            logger.info("No events or snapshots found in GRID data")
+            events = pd.DataFrame(columns=["type", "timestamp", "killerId", "victimId", "headshot"])
         
         # 3. Analyze
         logger.info(f"Running micro and macro analytics for {game}")
@@ -297,7 +222,7 @@ async def get_match_review(match_id: str):
                 "delta": what_if["delta"] * 100,
                 "current_probability": what_if["current_probability"]
             }
-        ], game=game)
+        ], game=game, player_stats=player_stats)
         
         logger.info("Successfully processed match review")
         response_data = {

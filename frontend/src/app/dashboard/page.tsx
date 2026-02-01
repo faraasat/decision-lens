@@ -74,13 +74,7 @@ export default function Dashboard() {
         );
         const matches = await res.json();
         
-        // Add demo matches for guaranteed state visibility
-        const demoMatches = [
-          { id: "2825123", game: "lol", title: "C9 vs FlyQuest (Demo)", tournament: "LCS Showcase", status: "available" },
-          { id: "2843071", game: "valorant", title: "C9 vs Sentinels (Demo)", tournament: "VCT Showcase", status: "available" }
-        ].filter(m => m.game === activeGame);
-        
-        const finalMatches = [...matches, ...demoMatches];
+        const finalMatches = [...matches];
         setLiveMatches(finalMatches);
 
         if (finalMatches.length > 0 && !matchId) {
@@ -933,15 +927,20 @@ export default function Dashboard() {
                       </p>
                       <p className="text-2xl font-black italic">
                         {currentData?.game === "valorant"
-                          ? currentData?.current_state?.gold_diff > 0
-                            ? Math.abs(
-                                currentData?.current_state?.gold_diff * 0.8,
-                              ).toFixed(0)
-                            : (
-                                2000 +
-                                (currentData?.current_state?.gold_diff || 0) *
-                                  0.5
-                              ).toFixed(0)
+                          ? (
+                              currentData?.player_stats
+                                ?.filter(
+                                  (p: any) =>
+                                    p.team_id === "blue" ||
+                                    p.team_id === "team-blue" ||
+                                    p.team_id === 100,
+                                )
+                                .reduce(
+                                  (sum: number, p: any) =>
+                                    sum + (p.credits || 0),
+                                  0,
+                                ) || 0
+                            ).toFixed(0)
                           : (
                               currentData?.player_stats
                                 ?.filter(
@@ -986,15 +985,20 @@ export default function Dashboard() {
                       </p>
                       <p className="text-2xl font-black italic">
                         {currentData?.game === "valorant"
-                          ? currentData?.current_state?.gold_diff < 0
-                            ? Math.abs(
-                                currentData?.current_state?.gold_diff * 0.8,
-                              ).toFixed(0)
-                            : (
-                                2000 -
-                                (currentData?.current_state?.gold_diff || 0) *
-                                  0.5
-                              ).toFixed(0)
+                          ? (
+                              currentData?.player_stats
+                                ?.filter(
+                                  (p: any) =>
+                                    p.team_id === "red" ||
+                                    p.team_id === "team-red" ||
+                                    p.team_id === 200,
+                                )
+                                .reduce(
+                                  (sum: number, p: any) =>
+                                    sum + (p.credits || 0),
+                                  0,
+                                ) || 0
+                            ).toFixed(0)
                           : (
                               currentData?.player_stats
                                 ?.filter(

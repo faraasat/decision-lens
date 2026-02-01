@@ -66,8 +66,8 @@ class LiveStreamService:
             all_events = normalizer.extract_events(full_data, event_types)
 
             if snapshots.empty:
-                logger.warning("No snapshots found for match, using mock generator")
-                await self._run_mock_stream(match_id, game)
+                logger.warning(f"No snapshots found for match {match_id}. Cannot start live stream.")
+                self.is_running = False
                 return
 
             # 2. Stream snapshots one by one to simulate real-time
