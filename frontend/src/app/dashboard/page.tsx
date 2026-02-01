@@ -584,7 +584,7 @@ export default function Dashboard() {
                         value={m.id}
                         className="bg-slate-900 text-primary"
                       >
-                        {m.title} ({m.tournament})
+                        {m.title} ({m.tournament}){m.startTimeScheduled ? ` • ${new Date(m.startTimeScheduled).toLocaleString()}` : ""}
                       </option>
                     ))}
                   </optgroup>

@@ -297,6 +297,7 @@ class GridService:
                                 "tournament": node.get("tournament", {}).get(
                                     "name", "Unknown"
                                 ),
+                                "startTimeScheduled": node.get("startTimeScheduled"),
                                 "status": "available",
                             }
                         )
