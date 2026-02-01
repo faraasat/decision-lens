@@ -7,36 +7,59 @@ class Normalizer:
     def normalize_timeline(timeline_data: Dict[str, Any]) -> pd.DataFrame:
         """
         Convert raw timeline data into a flat DataFrame of snapshots.
-        Expecting snapshots at regular intervals (e.g., every 1 min).
         """
         frames = timeline_data.get("frames", [])
+        metadata = timeline_data.get("metadata", {})
+        game = metadata.get("game", "lol") # Default to lol if not specified
+        
         snapshot_list = []
         
         for frame in frames:
             timestamp = frame.get("timestamp")
             participant_data = frame.get("participantFrames", {})
             
-            # Aggregate team level stats from participant frames
+            # Aggregate team level stats
             team_stats = {
-                100: {"gold": 0, "xp": 0},
-                200: {"gold": 0, "xp": 0}
+                100: {"primary": 0, "secondary": 0},
+                200: {"primary": 0, "secondary": 0},
+                "team-blue": {"primary": 0, "secondary": 0},
+                "team-red": {"primary": 0, "secondary": 0}
             }
             
+            snapshot = {"timestamp": timestamp}
             for pid, data in participant_data.items():
-                # GRID participant IDs are 1-10, usually 1-5 for team 100, 6-10 for team 200
-                team_id = 100 if int(pid) <= 5 else 200
-                team_stats[team_id]["gold"] += data.get("totalGold", 0)
-                team_stats[team_id]["xp"] += data.get("xp", 0)
+                if game == "valorant":
+                    team_id = "team-blue" if int(pid) <= 5 else "team-red"
+                    primary_val = data.get("credits", 0)
+                    secondary_val = data.get("loadoutValue", 0)
+                    
+                    snapshot[f"p{pid}_credits"] = primary_val
+                    snapshot[f"p{pid}_loadout"] = secondary_val
+                else: # LoL
+                    team_id = 100 if int(pid) <= 5 else 200
+                    primary_val = data.get("totalGold", 0)
+                    secondary_val = data.get("xp", 0)
+                    
+                    snapshot[f"p{pid}_gold"] = primary_val
+                    snapshot[f"p{pid}_xp"] = secondary_val
+                    snapshot[f"p{pid}_minionsKilled"] = data.get("minionsKilled", 0)
+                    snapshot[f"p{pid}_jungleMinionsKilled"] = data.get("jungleMinionsKilled", 0)
+                    snapshot[f"p{pid}_wardsPlaced"] = data.get("wardsPlaced", 0)
+
+                team_stats[team_id]["primary"] += primary_val
+                team_stats[team_id]["secondary"] += secondary_val
             
-            snapshot = {
-                "timestamp": timestamp,
-                "gold_diff": team_stats[100]["gold"] - team_stats[200]["gold"],
-                "xp_diff": team_stats[100]["xp"] - team_stats[200]["xp"],
-                "team100_gold": team_stats[100]["gold"],
-                "team200_gold": team_stats[200]["gold"],
-                "team100_xp": team_stats[100]["xp"],
-                "team200_xp": team_stats[200]["xp"]
-            }
+            if game == "valorant":
+                snapshot["gold_diff"] = team_stats["team-blue"]["primary"] - team_stats["team-red"]["primary"]
+                snapshot["xp_diff"] = team_stats["team-blue"]["secondary"] - team_stats["team-red"]["secondary"]
+                snapshot["team100_gold"] = team_stats["team-blue"]["primary"]
+                snapshot["team200_gold"] = team_stats["team-red"]["primary"]
+            else:
+                snapshot["gold_diff"] = team_stats[100]["primary"] - team_stats[200]["primary"]
+                snapshot["xp_diff"] = team_stats[100]["secondary"] - team_stats[200]["secondary"]
+                snapshot["team100_gold"] = team_stats[100]["primary"]
+                snapshot["team200_gold"] = team_stats[200]["primary"]
+            
             snapshot_list.append(snapshot)
             
         return pd.DataFrame(snapshot_list)
@@ -44,16 +67,27 @@ class Normalizer:
     @staticmethod
     def extract_events(timeline_data: Dict[str, Any], event_types: List[str] = None) -> pd.DataFrame:
         """
-        Extract specific events (e.g., CHAMPION_KILL, BUILDING_KILL, ELITE_MONSTER_KILL)
+        Extract specific events from frames or rounds.
         """
-        frames = timeline_data.get("frames", [])
         events = []
         
+        # Look in frames (Standard LoL / Val structure)
+        frames = timeline_data.get("frames", [])
         for frame in frames:
             for event in frame.get("events", []):
                 if event_types is None or event.get("type") in event_types:
                     events.append(event)
+        
+        # Look in rounds (VALORANT specific mock/data structure)
+        rounds = timeline_data.get("rounds", [])
+        for round_data in rounds:
+            for event in round_data.get("events", []):
+                if event_types is None or event.get("type") in event_types:
+                    events.append(event)
                     
+        if not events:
+            return pd.DataFrame(columns=["type", "timestamp", "killerId", "victimId", "headshot"])
+            
         return pd.DataFrame(events)
 
 # Singleton instance

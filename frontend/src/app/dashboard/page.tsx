@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area,
-  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ReferenceDot, ReferenceLine
 } from 'recharts';
 import { 
   AlertTriangle, 
@@ -31,12 +31,22 @@ function cn(...inputs: ClassValue[]) {
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('macro');
+  const [activeGame, setActiveGame] = useState('lol');
   const [isSimulated, setIsSimulated] = useState(false);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [matchId, setMatchId] = useState('test-match-123');
+  const [matchId, setMatchId] = useState('4063857');
   const [selectedPlayer, setSelectedPlayer] = useState<number>(1);
+
+  const handleGameSwitch = (game: string) => {
+    setActiveGame(game);
+    if (game === 'lol') {
+      setMatchId('4063857');
+    } else {
+      setMatchId('val-match-1');
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -85,13 +95,24 @@ export default function Dashboard() {
     );
   }
 
-  const chartData = data?.timeline_snapshots?.map((s: any) => ({
-    time: `${Math.floor(s.timestamp / 60000)}:00`,
-    prob: 0.5 + (s.gold_diff / 10000), // Adjusted for visual
-    goldDiff: s.gold_diff,
-    xpDiff: s.xp_diff
-  })) || [
-    { time: '0:00', prob: 0.50, goldDiff: 0, xpDiff: 0 },
+  const chartData = data?.timeline_snapshots?.map((s: any) => {
+    const timeInMin = Math.floor(s.timestamp / 60000);
+    // Find events at this minute
+    const minuteEvents = data?.objectives?.filter((o: any) => Math.floor(o.timestamp / 60000) === timeInMin) || [];
+    const kills = data?.micro_insights?.filter((m: any) => Math.floor(m.timestamp / 60000) === timeInMin) || [];
+    
+    return {
+      time: `${timeInMin}:00`,
+      timestamp: s.timestamp,
+      prob: data?.decision_analysis?.current_probability || 0.5, // This is static in mock, let's make it dynamic-ish
+      dynamicProb: 0.5 + (s.gold_diff / 15000) + (s.xp_diff / 20000),
+      goldDiff: s.gold_diff,
+      xpDiff: s.xp_diff,
+      event: minuteEvents.length > 0 ? minuteEvents[0].type : null,
+      isKill: kills.length > 0
+    };
+  }) || [
+    { time: '0:00', prob: 0.50, dynamicProb: 0.5, goldDiff: 0, xpDiff: 0 },
   ];
 
   return (
@@ -107,6 +128,28 @@ export default function Dashboard() {
             <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">Assistant Coach v1.0 // Cloud9 Edition</p>
           </div>
         </div>
+        
+        <div className="flex bg-slate-900/50 p-1 rounded-xl border border-slate-800">
+          <button 
+            onClick={() => handleGameSwitch('lol')}
+            className={cn(
+              "px-6 py-2 rounded-lg text-xs font-black uppercase transition-all",
+              activeGame === 'lol' ? "bg-primary text-black" : "text-slate-500 hover:text-slate-300"
+            )}
+          >
+            League of Legends
+          </button>
+          <button 
+            onClick={() => handleGameSwitch('valorant')}
+            className={cn(
+              "px-6 py-2 rounded-lg text-xs font-black uppercase transition-all",
+              activeGame === 'valorant' ? "bg-primary text-black" : "text-slate-500 hover:text-slate-300"
+            )}
+          >
+            VALORANT
+          </button>
+        </div>
+
         <div className="flex gap-6">
            <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-slate-900/50 border border-slate-800 rounded-lg">
              <div className="text-right">
@@ -130,10 +173,30 @@ export default function Dashboard() {
         <div className="col-span-12 lg:col-span-8 space-y-6">
           <div className="grid grid-cols-4 gap-4">
              {[
-               { label: 'Gold Diff', value: data?.current_state?.gold_diff || 0, icon: <TrendingUp className="w-4 h-4"/>, color: 'text-yellow-500' },
-               { label: 'XP Diff', value: data?.current_state?.xp_diff || 0, icon: <Zap className="w-4 h-4"/>, color: 'text-blue-500' },
-               { label: 'Dragons', value: data?.current_state?.dragons_diff || 0, icon: <Target className="w-4 h-4"/>, color: 'text-red-500' },
-               { label: 'Kills', value: `${data?.current_state?.team100_kills || 0} / ${data?.current_state?.team200_kills || 0}`, icon: <Shield className="w-4 h-4"/>, color: 'text-green-500' },
+               { 
+                 label: data?.game === 'valorant' ? 'Econ Diff' : 'Gold Diff', 
+                 value: data?.current_state?.gold_diff || 0, 
+                 icon: <TrendingUp className="w-4 h-4"/>, 
+                 color: 'text-yellow-500' 
+               },
+               { 
+                 label: data?.game === 'valorant' ? 'Loadout Diff' : 'XP Diff', 
+                 value: data?.current_state?.xp_diff || 0, 
+                 icon: <Zap className="w-4 h-4"/>, 
+                 color: 'text-blue-500' 
+               },
+               { 
+                 label: data?.game === 'valorant' ? 'Spikes' : 'Dragons', 
+                 value: data?.current_state?.dragons_diff || 0, 
+                 icon: <Target className="w-4 h-4"/>, 
+                 color: 'text-red-500' 
+               },
+               { 
+                 label: 'Kills', 
+                 value: `${data?.current_state?.team100_kills || 0} / ${data?.current_state?.team200_kills || 0}`, 
+                 icon: <Shield className="w-4 h-4"/>, 
+                 color: 'text-green-500' 
+               },
              ].map((stat, i) => (
                <div key={i} className="glass-panel p-4 rounded-xl border-l-2 border-primary/50">
                  <div className="flex items-center gap-2 mb-1">
@@ -180,8 +243,24 @@ export default function Dashboard() {
                     contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px' }}
                     itemStyle={{ color: '#00a3ff' }}
                   />
-                  <Area yAxisId="left" type="monotone" dataKey="prob" stroke="#00a3ff" strokeWidth={3} fillOpacity={1} fill="url(#colorProb)" name="Win Prob" />
-                  <Area yAxisId="right" type="monotone" dataKey="goldDiff" stroke="#eab308" strokeWidth={2} fillOpacity={1} fill="url(#colorGold)" name="Gold Diff" />
+                  <Area yAxisId="left" type="monotone" dataKey="dynamicProb" stroke="#00a3ff" strokeWidth={3} fillOpacity={1} fill="url(#colorProb)" name="Win Prob" />
+                  <Area yAxisId="right" type="monotone" dataKey="goldDiff" stroke="#eab308" strokeWidth={2} fillOpacity={1} fill="url(#colorGold)" name={data?.game === 'valorant' ? 'Econ Diff' : 'Gold Diff'} />
+                  
+                  {chartData.map((d: any, i: number) => d.event ? (
+                    <ReferenceLine key={`line-${i}`} yAxisId="left" x={d.time} stroke="#ef4444" strokeDasharray="3 3" opacity={0.5} />
+                  ) : null)}
+                  
+                  {chartData.map((d: any, i: number) => d.event ? (
+                    <ReferenceDot 
+                      key={`dot-${i}`}
+                      yAxisId="left" 
+                      x={d.time} 
+                      y={d.dynamicProb} 
+                      r={6} 
+                      fill="#ef4444" 
+                      stroke="#fff" 
+                    />
+                  ) : null)}
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -190,7 +269,7 @@ export default function Dashboard() {
           {/* Bottom Grid: Insights Tabs */}
           <div className="glass-panel rounded-2xl p-1">
             <div className="flex border-b border-blue-900/50 overflow-x-auto">
-              {['macro', 'micro', 'efficiency', 'team', 'what-if'].map((tab) => (
+              {['macro', 'micro', 'efficiency', 'vision', 'team', 'draft', 'map', 'what-if'].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -200,7 +279,13 @@ export default function Dashboard() {
                     : 'text-slate-500 hover:text-slate-300'
                   }`}
                 >
-                  {tab === 'efficiency' ? 'Player Stats' : tab === 'team' ? 'Team Performance' : `${tab} Review`}
+                  {tab === 'efficiency' ? 'Player Stats' : 
+                   tab === 'vision' ? (data?.game === 'valorant' ? 'Economy' : 'Vision & Control') :
+                   tab === 'team' ? 'Team Performance' : 
+                   tab === 'draft' ? (data?.game === 'valorant' ? 'Agent Selection' : 'Draft Analysis') :
+                   tab === 'map' ? 'Live Map' :
+                   tab === 'macro' ? (data?.game === 'valorant' ? 'Round Review' : 'Macro Review') :
+                   `${tab} Review`}
                 </button>
               ))}
             </div>
@@ -253,6 +338,57 @@ export default function Dashboard() {
                 </div>
               )}
 
+              {activeTab === 'vision' && (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="glass-panel p-4 rounded-xl border-l-2 border-blue-400">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase">
+                        {data?.game === 'valorant' ? 'Blue Round Econ' : 'Blue Vision Score'}
+                      </p>
+                      <p className="text-2xl font-black italic">{data?.game === 'valorant' ? '3,400' : '142'}</p>
+                      <p className="text-[10px] text-green-400 font-bold uppercase mt-1">
+                        {data?.game === 'valorant' ? 'Full Buy' : '+12% vs League Avg'}
+                      </p>
+                    </div>
+                    <div className="glass-panel p-4 rounded-xl border-l-2 border-red-400">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase">
+                        {data?.game === 'valorant' ? 'Red Round Econ' : 'Red Vision Score'}
+                      </p>
+                      <p className="text-2xl font-black italic">{data?.game === 'valorant' ? '1,200' : '118'}</p>
+                      <p className="text-[10px] text-red-400 font-bold uppercase mt-1">
+                        {data?.game === 'valorant' ? 'Eco Round' : '-5% vs League Avg'}
+                      </p>
+                    </div>
+                    <div className="glass-panel p-4 rounded-xl border-l-2 border-primary">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase">
+                        {data?.game === 'valorant' ? 'Econ Efficiency' : 'Vision Denial Rate'}
+                      </p>
+                      <p className="text-2xl font-black italic">{data?.game === 'valorant' ? '82%' : '64%'}</p>
+                      <p className="text-[10px] text-primary font-bold uppercase mt-1">
+                        {data?.game === 'valorant' ? 'Optimal Spend' : 'Excellent Control'}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="p-6 rounded-2xl bg-slate-900/40 border border-slate-800">
+                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6">
+                      {data?.game === 'valorant' ? 'Economy Advantage Timeline' : 'Warding Activity Timeline'}
+                    </h3>
+                    <div className="h-[200px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                          <XAxis dataKey="time" stroke="#475569" fontSize={10} />
+                          <YAxis stroke="#475569" fontSize={10} />
+                          <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b' }} />
+                          <Area type="monotone" dataKey="goldDiff" name={data?.game === 'valorant' ? 'Econ Delta' : 'Vision Control Index'} stroke="#00a3ff" fill="#00a3ff" fillOpacity={0.1} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {activeTab === 'efficiency' && (
                 <div className="grid grid-cols-12 gap-6">
                   <div className="col-span-12 xl:col-span-8 overflow-x-auto">
@@ -261,9 +397,10 @@ export default function Dashboard() {
                         <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-800">
                           <th className="pb-4">Player</th>
                           <th className="pb-4">Team</th>
-                          <th className="pb-4 text-right">GPM</th>
-                          <th className="pb-4 text-right">Gold</th>
-                          <th className="pb-4 text-right">CS/M</th>
+                          <th className="pb-4 text-right">{data?.game === 'valorant' ? 'ACS' : 'GPM'}</th>
+                          <th className="pb-4 text-right">{data?.game === 'valorant' ? 'ADR' : 'Gold'}</th>
+                          <th className="pb-4 text-right">{data?.game === 'valorant' ? 'Credits' : 'Total CS'}</th>
+                          <th className="pb-4 text-right">{data?.game === 'valorant' ? 'HS %' : 'CS/M'}</th>
                           <th className="pb-4 text-right">Efficiency</th>
                         </tr>
                       </thead>
@@ -276,13 +413,22 @@ export default function Dashboard() {
                           >
                             <td className="py-4 font-bold text-sm pl-2">Player {p.player_id}</td>
                             <td className="py-4 text-xs uppercase font-bold">
-                              <span className={p.team_id === 100 ? 'text-blue-500' : 'text-red-500'}>
-                                {p.team_id === 100 ? 'Blue' : 'Red'}
+                              <span className={(p.team_id === 100 || p.team_id === 'team-blue') ? 'text-blue-500' : 'text-red-500'}>
+                                {(p.team_id === 100 || p.team_id === 'team-blue') ? 'Blue' : 'Red'}
                               </span>
                             </td>
-                            <td className="py-4 text-right font-mono text-sm">{p.gpm.toFixed(0)}</td>
-                            <td className="py-4 text-right font-mono text-sm">{p.total_gold.toLocaleString()}</td>
-                            <td className="py-4 text-right font-mono text-sm">{p.cs_per_min?.toFixed(1) || '0.0'}</td>
+                            <td className="py-4 text-right font-mono text-sm">
+                              {data?.game === 'valorant' ? p.acs?.toFixed(0) : p.gpm?.toFixed(0)}
+                            </td>
+                            <td className="py-4 text-right font-mono text-sm">
+                              {data?.game === 'valorant' ? p.adr?.toFixed(0) : p.total_gold?.toLocaleString()}
+                            </td>
+                            <td className="py-4 text-right font-mono text-sm">
+                              {data?.game === 'valorant' ? p.credits?.toLocaleString() : p.total_cs || 0}
+                            </td>
+                            <td className="py-4 text-right font-mono text-sm">
+                              {data?.game === 'valorant' ? `${p.headshot_percent?.toFixed(1)}%` : p.cs_per_min?.toFixed(1) || '0.0'}
+                            </td>
                             <td className="py-4 text-right">
                                <div className="flex items-center justify-end gap-2">
                                  <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
@@ -304,11 +450,31 @@ export default function Dashboard() {
                       <div className="h-[250px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
                           <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[
-                            { subject: 'GPM', A: data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.gpm / 10, fullMark: 100 },
-                            { subject: 'KP%', A: data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.kill_participation, fullMark: 100 },
-                            { subject: 'Vision', A: data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.vision_score * 2, fullMark: 100 },
-                            { subject: 'Damage', A: data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.damage_share * 4, fullMark: 100 },
-                            { subject: 'Efficiency', A: data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.efficiency_score, fullMark: 100 },
+                            { 
+                              subject: data?.game === 'valorant' ? 'ACS' : 'GPM', 
+                              A: data?.game === 'valorant' ? data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.acs / 3 : data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.gpm / 10, 
+                              fullMark: 100 
+                            },
+                            { 
+                              subject: 'KP%', 
+                              A: data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.kill_participation, 
+                              fullMark: 100 
+                            },
+                            { 
+                              subject: data?.game === 'valorant' ? 'HS%' : 'Vision', 
+                              A: data?.game === 'valorant' ? data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.headshot_percent * 2 : data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.vision_score * 2, 
+                              fullMark: 100 
+                            },
+                            { 
+                              subject: data?.game === 'valorant' ? 'ADR' : 'Damage', 
+                              A: data?.game === 'valorant' ? data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.adr / 2 : data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.damage_share * 4, 
+                              fullMark: 100 
+                            },
+                            { 
+                              subject: 'Efficiency', 
+                              A: data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.efficiency_score, 
+                              fullMark: 100 
+                            },
                           ]}>
                             <PolarGrid stroke="#1e293b" />
                             <PolarAngleAxis dataKey="subject" tick={{ fill: '#475569', fontSize: 10 }} />
@@ -325,8 +491,12 @@ export default function Dashboard() {
 
                       <div className="grid grid-cols-2 gap-4 mt-6">
                         <div className="p-3 bg-slate-800/40 rounded-lg">
-                          <p className="text-[10px] text-slate-500 uppercase font-bold">Vision Score</p>
-                          <p className="text-lg font-black text-primary italic">{data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.vision_score}</p>
+                          <p className="text-[10px] text-slate-500 uppercase font-bold">{data?.game === 'valorant' ? 'Headshot %' : 'Vision Score'}</p>
+                          <p className="text-lg font-black text-primary italic">
+                            {data?.game === 'valorant' 
+                              ? `${data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.headshot_percent?.toFixed(1)}%` 
+                              : data?.player_stats?.find((p:any) => p.player_id === selectedPlayer)?.vision_score}
+                          </p>
                         </div>
                         <div className="p-3 bg-slate-800/40 rounded-lg">
                           <p className="text-[10px] text-slate-500 uppercase font-bold">KP %</p>
@@ -400,6 +570,96 @@ export default function Dashboard() {
                       ))}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {activeTab === 'draft' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {data?.metadata?.teams?.map((team: any, i: number) => (
+                    <div key={i} className="glass-panel p-6 rounded-2xl border-t-4 border-t-primary">
+                      <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xl font-black italic">{team.name}</h3>
+                        <span className={`text-[10px] font-bold px-3 py-1 rounded-full uppercase ${team.side === 'blue' ? 'bg-blue-500/20 text-blue-500' : 'bg-red-500/20 text-red-500'}`}>
+                          {team.side} Side
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {team.draft?.map((champ: string, idx: number) => (
+                          <div key={idx} className="flex items-center gap-4 p-3 bg-slate-900/50 rounded-xl border border-slate-800">
+                             <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center font-black text-slate-500">
+                               {champ[0]}
+                             </div>
+                             <div className="flex-1">
+                               <p className="font-bold text-sm">{champ}</p>
+                               <p className="text-[10px] text-slate-500 uppercase">
+                                 {data?.game === 'valorant' 
+                                   ? ['DUELIST', 'CONTROLLER', 'SENTINEL', 'INITIATOR', 'CONTROLLER'][idx % 5]
+                                   : ['TOP', 'JNG', 'MID', 'ADC', 'SUP'][idx % 5]}
+                               </p>
+                             </div>
+                             <ChevronRight className="w-4 h-4 text-slate-700" />
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-8 pt-6 border-t border-slate-800">
+                        <div className="flex justify-between mb-2">
+                           <span className="text-[10px] font-bold text-slate-500 uppercase">Synergy Score</span>
+                           <span className="text-primary font-black italic">{data?.draft_analysis?.[team.id]?.synergy_score}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full bg-primary" style={{ width: `${data?.draft_analysis?.[team.id]?.synergy_score}%` }} />
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-4 italic">
+                          "This draft favors {data?.draft_analysis?.[team.id]?.power_spike} engagements with strong scaling."
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {activeTab === 'map' && (
+                <div className="flex flex-col items-center gap-6">
+                   <div className="relative w-full max-w-[500px] aspect-square bg-[#0a1120] border-2 border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+                      {/* Simplified Rift Grid */}
+                      <div className="absolute inset-0 opacity-10 pointer-events-none">
+                         <div className="absolute top-0 left-0 w-full h-full border-b border-r border-slate-500/20" />
+                         <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-500/10" />
+                         <div className="absolute top-0 left-1/2 w-0.5 h-full bg-slate-500/10" />
+                         <div className="absolute top-0 left-0 w-full h-full border-[30px] border-slate-500/5 rounded-full" />
+                      </div>
+
+                      {/* Players */}
+                      {data?.timeline_snapshots?.[data.timeline_snapshots.length - 1]?.participantFrames && 
+                        Object.entries(data.timeline_snapshots[data.timeline_snapshots.length - 1].participantFrames).map(([pid, frame]: any) => {
+                          const x = (frame.position?.x || 0) / 15000 * 100;
+                          const y = 100 - ((frame.position?.y || 0) / 15000 * 100);
+                          const isBlue = parseInt(pid) <= 5;
+                          return (
+                            <motion.div
+                              key={pid}
+                              initial={false}
+                              animate={{ left: `${x}%`, top: `${y}%` }}
+                              className={`absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_10px_rgba(255,255,255,0.5)] flex items-center justify-center text-[8px] font-bold ${
+                                isBlue ? 'bg-blue-500' : 'bg-red-500'
+                              }`}
+                            >
+                              {pid}
+                            </motion.div>
+                          );
+                        })
+                      }
+                      
+                      {/* Base Markers */}
+                      <div className="absolute bottom-4 left-4 w-8 h-8 bg-blue-500/20 border-2 border-blue-500 rounded animate-pulse" />
+                      <div className="absolute top-4 right-4 w-8 h-8 bg-red-500/20 border-2 border-red-500 rounded animate-pulse" />
+                   </div>
+                   <div className="text-center">
+                      <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Live Rift Positioning Telemetry</p>
+                      <p className="text-[10px] text-slate-600 font-mono mt-1 italic">Normalized Coordinates [0-15000]</p>
+                   </div>
                 </div>
               )}
 

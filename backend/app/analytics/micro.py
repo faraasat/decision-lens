@@ -3,56 +3,75 @@ from typing import Dict, List, Any
 
 class MicroAnalyticsEngine:
     @staticmethod
-    def analyze_player_mistakes(events_df: pd.DataFrame, snapshots_df: pd.DataFrame) -> List[Dict[str, Any]]:
+    def analyze_player_mistakes(events_df: pd.DataFrame, snapshots_df: pd.DataFrame, game: str = "lol") -> List[Dict[str, Any]]:
         """
         Identify recurring micro mistakes.
-        Example: Deaths without KAST, isolated deaths.
         """
         mistakes = []
         
         if events_df.empty:
             return mistakes
 
-        # Champion Kills
-        kills = events_df[events_df['type'] == 'CHAMPION_KILL']
-        
-        for _, kill in kills.iterrows():
-            victim_id = kill.get('victimId')
-            killer_id = kill.get('killerId')
-            assisting_participants = kill.get('assistingParticipantIds', [])
-            timestamp = kill.get('timestamp')
+        if game == "valorant":
+            # Valorant specific mistakes: Deaths without trade, low econ management
+            kills = events_df[events_df['type'] == 'KILL']
+            for _, kill in kills.iterrows():
+                victim_id = kill.get('victimId')
+                timestamp = kill.get('timestamp')
+                
+                # Check for trades (kill by teammate within 5 seconds)
+                victim_team = "blue" if int(victim_id) <= 5 else "red"
+                trade_found = False
+                nearby_kills = kills[(kills['timestamp'] > timestamp) & (kills['timestamp'] < timestamp + 5000)]
+                for _, n_kill in nearby_kills.iterrows():
+                    n_killer_id = n_kill.get('killerId')
+                    n_killer_team = "blue" if int(n_killer_id) <= 5 else "red"
+                    if n_killer_team == victim_team:
+                        trade_found = True
+                        break
+                
+                if not trade_found:
+                    mistakes.append({
+                        "player_id": victim_id,
+                        "type": "Untraded Death",
+                        "timestamp": timestamp,
+                        "impact": "High",
+                        "details": f"Player {victim_id} died without being traded by a teammate."
+                    })
+        else:
+            # Champion Kills (LoL)
+            kills = events_df[events_df['type'] == 'CHAMPION_KILL']
             
-            # Isolated Death Logic:
-            # 1. Victim had no assisting teammates in their own death (wait, that's not right for victim)
-            # 2. Re-read: "C9 loses nearly 4 out of 5 rounds when OXY dies 'for free' (without a KAST)"
-            # In LoL, if you die and your team gets nothing back, it's an isolated death.
-            
-            # Check for trades: Did any teammate of the victim get a kill within 15 seconds?
-            victim_team = 100 if victim_id <= 5 else 200
-            
-            trade_found = False
-            nearby_kills = kills[(kills['timestamp'] > timestamp) & (kills['timestamp'] < timestamp + 15000)]
-            for _, n_kill in nearby_kills.iterrows():
-                n_killer_id = n_kill.get('killerId')
-                n_killer_team = 100 if n_killer_id <= 5 else 200
-                if n_killer_team == victim_team:
-                    trade_found = True
-                    break
-            
-            if not trade_found:
-                mistakes.append({
-                    "player_id": victim_id,
-                    "type": "Isolated Death",
-                    "timestamp": timestamp,
-                    "impact": "High",
-                    "details": f"Player {victim_id} died at {timestamp//1000}s without a trade or assist."
-                })
+            for _, kill in kills.iterrows():
+                victim_id = kill.get('victimId')
+                timestamp = kill.get('timestamp')
+                
+                # Check for trades: Did any teammate of the victim get a kill within 15 seconds?
+                victim_team = 100 if int(victim_id) <= 5 else 200
+                
+                trade_found = False
+                nearby_kills = kills[(kills['timestamp'] > timestamp) & (kills['timestamp'] < timestamp + 15000)]
+                for _, n_kill in nearby_kills.iterrows():
+                    n_killer_id = n_kill.get('killerId')
+                    n_killer_team = 100 if int(n_killer_id) <= 5 else 200
+                    if n_killer_team == victim_team:
+                        trade_found = True
+                        break
+                
+                if not trade_found:
+                    mistakes.append({
+                        "player_id": victim_id,
+                        "type": "Isolated Death",
+                        "timestamp": timestamp,
+                        "impact": "High",
+                        "details": f"Player {victim_id} died at {timestamp//1000}s without a trade or assist."
+                    })
                     
         return mistakes
 
     @staticmethod
-    def compute_player_efficiency(snapshots_df: pd.DataFrame) -> List[Dict[str, Any]]:
-        """Compute metrics like Gold Per Minute (GPM), XP Per Minute, etc."""
+    def compute_player_efficiency(snapshots_df: pd.DataFrame, events_df: pd.DataFrame = None, game: str = "lol") -> List[Dict[str, Any]]:
+        """Compute metrics like GPM, ACS, Econ Rating, etc."""
         if snapshots_df.empty:
             return []
             
@@ -60,28 +79,51 @@ class MicroAnalyticsEngine:
         duration_min = max(latest_frame['timestamp'] / 60000, 1)
         
         stats = []
-        # In a real scenario, we'd have participant-level snapshots.
-        # Since we only have team-level in snapshots_df currently, 
-        # let's simulate individual stats based on team gold for the demo.
-        # Ideally, normalizer should keep participant frames.
         
         for i in range(1, 11):
-            team_id = 100 if i <= 5 else 200
-            team_gold = latest_frame[f'team{team_id}_gold']
-            # Distribute team gold with some variance for demo
-            player_gold = (team_gold / 5) * (0.8 + (i % 5) * 0.1)
-            
-            stats.append({
-                "player_id": i,
-                "team_id": team_id,
-                "gpm": player_gold / duration_min,
-                "total_gold": player_gold,
-                "efficiency_score": 70 + (i * 2) % 25, # Mock score
-                "vision_score": 10 + (i * 3) % 40,
-                "kill_participation": 40 + (i * 7) % 50,
-                "damage_share": 10 + (i * 4) % 20,
-                "cs_per_min": 5 + (i * 0.5) % 5 if i % 5 != 0 else 1.2 # Support has low CS
-            })
+            if game == "valorant":
+                team_id = "blue" if i <= 5 else "red"
+                credits = latest_frame.get(f'p{i}_credits', 0)
+                loadout = latest_frame.get(f'p{i}_loadout', 0)
+                
+                # Simulate ACS and ADR for demo
+                kills = len(events_df[(events_df['type'] == 'KILL') & (events_df['killerId'] == i)]) if events_df is not None else 0
+                hs_kills = len(events_df[(events_df['type'] == 'KILL') & (events_df['killerId'] == i) & (events_df['headshot'] == True)]) if events_df is not None else 0
+                
+                hs_percent = (hs_kills / kills * 100) if kills > 0 else 0
+                
+                stats.append({
+                    "player_id": i,
+                    "team_id": team_id,
+                    "acs": 150 + (i * 20) % 150, # Mock ACS
+                    "adr": 100 + (i * 15) % 100, # Mock ADR
+                    "credits": credits,
+                    "loadout_value": loadout,
+                    "headshot_percent": hs_percent or (20 + (i * 3) % 15),
+                    "kill_participation": 50 + (i * 5) % 40,
+                    "efficiency_score": min(100, int(60 + (kills * 5) + (hs_percent / 2)))
+                })
+            else:
+                team_id = 100 if i <= 5 else 200
+                player_gold = latest_frame.get(f'p{i}_gold', (latest_frame[f'team100_gold' if team_id == 100 else f'team200_gold'] / 5) * (0.8 + (i % 5) * 0.1))
+                player_minions = latest_frame.get(f'p{i}_minionsKilled', 0)
+                player_jungle = latest_frame.get(f'p{i}_jungleMinionsKilled', 0)
+                player_wards = latest_frame.get(f'p{i}_wardsPlaced', 0)
+                
+                total_cs = player_minions + player_jungle
+                
+                stats.append({
+                    "player_id": i,
+                    "team_id": team_id,
+                    "gpm": player_gold / duration_min,
+                    "total_gold": player_gold,
+                    "efficiency_score": min(100, int(70 + (player_gold / 500) + (total_cs / 2))),
+                    "vision_score": player_wards * 2,
+                    "kill_participation": 40 + (i * 7) % 50,
+                    "damage_share": 10 + (i * 4) % 20,
+                    "cs_per_min": total_cs / duration_min,
+                    "total_cs": total_cs
+                })
             
         return stats
 
