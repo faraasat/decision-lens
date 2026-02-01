@@ -39,7 +39,7 @@ export default function Dashboard() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [matchId, setMatchId] = useState('4063857');
+  const [matchId, setMatchId] = useState('');
   const [selectedPlayer, setSelectedPlayer] = useState<number>(1);
   const [simulationResult, setSimulationResult] = useState<any>(null);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -50,9 +50,19 @@ export default function Dashboard() {
   useEffect(() => {
     fetch(`http://localhost:8000/api/matches/live?game=${activeGame}`)
       .then(res => res.json())
-      .then(setLiveMatches)
-      .catch(console.error);
-  }, [activeGame]);
+      .then(matches => {
+        setLiveMatches(matches);
+        if (matches.length > 0 && !matchId) {
+          setMatchId(matches[0].id);
+        } else if (matches.length === 0) {
+          setLoading(false);
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        setLoading(false);
+      });
+  }, [activeGame, matchId]);
 
   useEffect(() => {
     let interval: any;
@@ -117,14 +127,11 @@ export default function Dashboard() {
 
   const handleGameSwitch = (game: string) => {
     setActiveGame(game);
-    if (game === 'lol') {
-      setMatchId('4063857');
-    } else {
-      setMatchId('val-match-1');
-    }
+    setMatchId(''); // Reset matchId to trigger the effect that picks the first from the new list
   };
 
   useEffect(() => {
+    if (!matchId) return;
     setLoading(true);
     setError(null);
     setIsSimulated(false);
@@ -169,6 +176,39 @@ export default function Dashboard() {
         >
           Retry Connection
         </button>
+      </div>
+    );
+  }
+
+  if (!matchId && !loading) {
+    return (
+      <div className="min-h-screen bg-[#050a14] flex flex-col items-center justify-center p-6 text-center text-white">
+        <Activity className="w-16 h-16 text-primary/50 mb-4 animate-pulse" />
+        <h2 className="text-3xl font-bold mb-4 tracking-tighter uppercase font-mono">No Live Matches Found</h2>
+        <p className="text-slate-400 mb-8 max-w-md">
+          There are currently no active {activeGame.toUpperCase()} series on the GRID Network. 
+          Please check back later or try a different title.
+        </p>
+        <div className="flex gap-4">
+          <button 
+            onClick={() => handleGameSwitch('lol')}
+            className={cn(
+              "px-6 py-2 rounded-full font-bold uppercase transition-all",
+              activeGame === 'lol' ? "bg-primary text-black" : "bg-white/5 text-white hover:bg-white/10"
+            )}
+          >
+            League of Legends
+          </button>
+          <button 
+            onClick={() => handleGameSwitch('valorant')}
+            className={cn(
+              "px-6 py-2 rounded-full font-bold uppercase transition-all",
+              activeGame === 'valorant' ? "bg-primary text-black" : "bg-white/5 text-white hover:bg-white/10"
+            )}
+          >
+            Valorant
+          </button>
+        </div>
       </div>
     );
   }
@@ -273,11 +313,7 @@ export default function Dashboard() {
                  onChange={(e) => setMatchId(e.target.value)}
                  className="text-xs font-mono text-primary bg-transparent border-none focus:outline-none w-48 cursor-pointer"
                >
-                 <optgroup label="System Simulations" className="bg-slate-900 text-slate-500">
-                    <option value="4063857" className="bg-slate-900 text-primary">Mock LoL Match [LPL]</option>
-                    <option value="val-match-1" className="bg-slate-900 text-primary">Mock Val Match [VCT]</option>
-                 </optgroup>
-                 {liveMatches.length > 0 && (
+                 {liveMatches.length > 0 ? (
                    <optgroup label="GRID Live Series Feed" className="bg-slate-900 text-slate-500">
                     {liveMatches.map((m: any) => (
                       <option key={m.id} value={m.id} className="bg-slate-900 text-primary">
@@ -285,6 +321,8 @@ export default function Dashboard() {
                       </option>
                     ))}
                    </optgroup>
+                 ) : (
+                   <option disabled className="bg-slate-900 text-primary italic text-[10px]">Awaiting Series Link...</option>
                  )}
                </select>
              </div>

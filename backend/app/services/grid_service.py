@@ -1,10 +1,9 @@
 import httpx
 import os
-import json
 import logging
-from typing import Dict, Any, Optional
-from pathlib import Path
+from typing import Dict, Any, Optional, List
 from dotenv import load_dotenv
+from .grid_queries import GET_RECENT_SERIES, GET_LIVE_SERIES_STATE
 
 load_dotenv()
 logger = logging.getLogger("decision-lens.grid")
@@ -12,174 +11,181 @@ logger = logging.getLogger("decision-lens.grid")
 class GridService:
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
         self.api_key = api_key or os.getenv("GRID_API_KEY")
-        self.base_url = base_url or os.getenv("GRID_BASE_URL", "https://api.grid.gg")
-        self.graphql_url = "https://api.grid.gg/central-data/graphql"
+        self.base_url = base_url or os.getenv("GRID_BASE_URL", "https://api-op.grid.gg")
+        
+        # Official GRID API endpoints
+        self.central_data_url = f"{self.base_url}/central-data/graphql"
+        self.live_data_feed_url = f"{self.base_url}/live-data-feed/graphql"
+        self.stats_feed_url = f"{self.base_url}/statistics-feed/graphql"
+        
         self.headers = {
             "x-api-key": self.api_key or "",
             "Content-Type": "application/json"
         }
+        
         if not self.api_key or self.api_key == "YOUR_GRID_API_KEY":
-            logger.warning("No valid GRID_API_KEY found. Falling back to mock data.")
+            logger.error("No valid GRID_API_KEY found.")
 
     async def get_match_details(self, match_id: str) -> Dict[str, Any]:
-        """Fetch general match metadata."""
+        """Fetch general match metadata from GRID File Download API."""
         if not self.api_key or self.api_key == "YOUR_GRID_API_KEY":
-            logger.info(f"Using mock details for match {match_id} (No API key)")
-            return self._get_mock_data(match_id)
+            raise ValueError("GRID_API_KEY is missing or invalid.")
             
-        # Try both versioned and unversioned endpoints for robustness
-        endpoints = [
-            f"{self.base_url}/series-data/v1/matches/{match_id}",
-            f"{self.base_url}/series-data/matches/{match_id}"
-        ]
-        
-        async with httpx.AsyncClient() as client:
-            for url in endpoints:
-                try:
-                    logger.info(f"Fetching match details from {url}")
-                    response = await client.get(url, headers=self.headers, timeout=5.0)
-                    if response.status_code == 200:
-                        data = response.json()
-                        logger.info(f"Successfully fetched match details from GRID: {match_id}")
-                        return data
-                    elif response.status_code == 401:
-                        logger.error(f"Unauthorized (401) fetching from {url}. Check GRID_API_KEY.")
-                        break
-                    elif response.status_code == 404:
-                        logger.warning(f"Match {match_id} not found at {url}")
-                        continue
-                    else:
-                        logger.warning(f"GRID API returned {response.status_code} for {url}")
-                except Exception as e:
-                    logger.error(f"Error fetching from {url}: {str(e)}")
-                    continue
-        
-        logger.warning(f"Match {match_id} fallback to mock data (Not found or API error)")
-        return self._get_mock_data(match_id)
-
-    async def get_match_timeline(self, match_id: str) -> Dict[str, Any]:
-        """Fetch detailed match timeline data (events, snapshots)."""
-        if not self.api_key or self.api_key == "YOUR_GRID_API_KEY":
-            logger.info(f"Using mock timeline for match {match_id} (No API key)")
-            return self._get_mock_data(match_id)
-
-        endpoints = [
-            f"{self.base_url}/series-data/v1/matches/{match_id}/timeline",
-            f"{self.base_url}/series-data/matches/{match_id}/timeline"
-        ]
-        
-        async with httpx.AsyncClient() as client:
-            for url in endpoints:
-                try:
-                    logger.info(f"Fetching match timeline from {url}")
-                    response = await client.get(url, headers=self.headers, timeout=10.0)
-                    if response.status_code == 200:
-                        data = response.json()
-                        logger.info(f"Successfully fetched match timeline from GRID: {match_id}")
-                        return data
-                    elif response.status_code == 401:
-                        logger.error(f"Unauthorized (401) fetching timeline from {url}. Check GRID_API_KEY.")
-                        break
-                    elif response.status_code == 404:
-                        logger.warning(f"Timeline for match {match_id} not found at {url}")
-                        continue
-                except Exception as e:
-                    logger.error(f"Error fetching timeline from {url}: {str(e)}")
-                    continue
-
-        logger.warning(f"Timeline for match {match_id} fallback to mock data")
-        return self._get_mock_data(match_id)
-
-    async def get_live_matches(self, game: str = "lol") -> List[Dict[str, Any]]:
-        """Fetch a list of live or recent matches using GRID GraphQL API."""
-        if not self.api_key or self.api_key == "YOUR_GRID_API_KEY":
-            logger.info("Using mock match list (No API key)")
-            return [
-                {"id": "4063857", "game": "lol", "title": "Cloud9 vs T1", "status": "live", "tournament": "Worlds 2025"},
-                {"id": "val-match-1", "game": "valorant", "title": "Sentinels vs Fnatic", "status": "live", "tournament": "VCT Masters"}
-            ]
-
-        # Map game string to titleId
-        title_id = 3 if game == "lol" else 6
-        
-        query = """
-        query GetRecentSeries($titleId: Int!) {
-            allSeries (
-                first: 20,
-                filter: {
-                    titleId: $titleId
-                    types: ESPORTS
-                }
-                orderBy: StartTimeScheduled
-                orderDirection: DESC
-            ) {
-                edges {
-                    node {
-                        id
-                        tournament {
-                            name
-                        }
-                        teams {
-                            name
-                        }
-                    }
-                }
-            }
-        }
-        """
-        
-        variables = {"titleId": title_id}
+        # GRID File Download API endpoints
+        url = f"{self.base_url}/file-download/end-state/grid/series/{match_id}"
         
         async with httpx.AsyncClient() as client:
             try:
-                logger.info(f"Fetching live matches from GraphQL for titleId: {title_id}")
+                logger.info(f"Fetching match details for series {match_id}")
+                response = await client.get(url, headers=self.headers, timeout=10.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info(f"Successfully fetched match details for series {match_id}")
+                    return data
+                else:
+                    logger.warning(f"Failed to fetch match details: {response.status_code}")
+            except Exception as e:
+                logger.error(f"Error fetching match details: {str(e)}")
+        
+        raise ValueError(f"Match {match_id} details not found on GRID API.")
+
+    async def get_match_timeline(self, match_id: str) -> Dict[str, Any]:
+        """Fetch detailed match timeline data from GRID File Download API."""
+        if not self.api_key or self.api_key == "YOUR_GRID_API_KEY":
+            raise ValueError("GRID_API_KEY is missing or invalid.")
+
+        # GRID File Download API for timeline data
+        url = f"{self.base_url}/file-download/end-state/grid/series/{match_id}"
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                logger.info(f"Fetching timeline for series {match_id}")
+                response = await client.get(url, headers=self.headers, timeout=10.0)
+                if response.status_code == 200:
+                    data = response.json()
+                    logger.info(f"Successfully fetched timeline for series {match_id}")
+                    return data
+                else:
+                    logger.warning(f"Failed to fetch timeline: {response.status_code}")
+            except Exception as e:
+                logger.error(f"Error fetching timeline: {str(e)}")
+
+        raise ValueError(f"Timeline for match {match_id} not found on GRID API.")
+
+    async def get_live_matches(self, game: str = "lol") -> List[Dict[str, Any]]:
+        """Fetch a list of live or recent matches using GRID APIs."""
+        if not self.api_key or self.api_key == "YOUR_GRID_API_KEY":
+            raise ValueError("GRID_API_KEY is missing or invalid.")
+
+        # Map game to titleId (LoL: 3, Valorant: 6)
+        title_id = 3 if game == "lol" else 6
+        
+        # 1. Try Live Data Feed GraphQL API for live matches
+        async with httpx.AsyncClient() as client:
+            try:
+                logger.info(f"Checking Live Data Feed GraphQL for titleId: {title_id}")
                 response = await client.post(
-                    self.graphql_url, 
-                    headers=self.headers, 
-                    json={"query": query, "variables": variables},
+                    self.live_data_feed_url,
+                    headers=self.headers,
+                    json={"query": GET_LIVE_SERIES_STATE, "variables": {"titleIds": [str(title_id)]}},
                     timeout=5.0
                 )
                 
                 if response.status_code == 200:
-                    data = response.json()
-                    edges = data.get("data", {}).get("allSeries", {}).get("edges", [])
+                    res_json = response.json()
+                    
+                    # Check for GraphQL errors
+                    if res_json.get("errors"):
+                        error_messages = [err.get("message", str(err)) for err in res_json["errors"]]
+                        logger.warning(f"Live Data Feed errors: {error_messages}")
+                    
+                    # Extract live series data
+                    data = res_json.get("data", {})
+                    series_list = data.get("allSeries", [])
+                    
+                    if series_list and isinstance(series_list, list) and len(series_list) > 0:
+                        matches = []
+                        for series in series_list:
+                            series_id = series.get("id")
+                            if not series_id:
+                                continue
+                            
+                            title_obj = series.get("title", {})
+                            tournament_obj = series.get("tournament", {})
+                            state = series.get("state", "unknown")
+                            
+                            matches.append({
+                                "id": str(series_id),
+                                "game": game,
+                                "title": title_obj.get("name", "Live Match"),
+                                "tournament": tournament_obj.get("name", "Live Tournament"),
+                                "status": "live" if state == "running" else state
+                            })
+                        
+                        if matches:
+                            logger.info(f"Found {len(matches)} live series in Live Data Feed")
+                            return matches
+                else:
+                    logger.warning(f"Live Data Feed returned {response.status_code}")
+            except Exception as e:
+                logger.warning(f"Live Data Feed unavailable: {str(e)}")
+
+        # 2. Fallback to Central Data API for recent series
+        async with httpx.AsyncClient() as client:
+            try:
+                logger.info(f"Fetching from Central Data for titleId: {title_id}")
+                response = await client.post(
+                    self.central_data_url,
+                    headers=self.headers,
+                    json={"query": GET_RECENT_SERIES, "variables": {"titleId": str(title_id)}},
+                    timeout=10.0
+                )
+
+                if response.status_code == 200:
+                    res_json = response.json()
+                    
+                    # Check for GraphQL errors
+                    if res_json.get("errors"):
+                        error_messages = [err.get("message", str(err)) for err in res_json["errors"]]
+                        logger.error(f"Central Data GraphQL errors: {error_messages}")
+                        return []
+                    
+                    # Extract data
+                    data = res_json.get("data", {})
+                    all_series = data.get("allSeries", {})
+                    edges = all_series.get("edges", [])
+                    
+                    if not edges:
+                        logger.info(f"No series found for titleId {title_id}")
+                        return []
+                    
                     matches = []
                     for edge in edges:
                         node = edge.get("node", {})
-                        teams = node.get("teams", [])
-                        team_names = " vs ".join([t.get("name", "Unknown") for t in teams]) if teams else "TBD"
+                        if not node or not node.get("id"):
+                            continue
+
+                        title = node.get("title", {})
+                        tournament = node.get("tournament", {})
+
                         matches.append({
-                            "id": node.get("id"),
+                            "id": str(node.get("id")),
                             "game": game,
-                            "title": team_names,
-                            "tournament": node.get("tournament", {}).get("name", "Unknown Tournament"),
-                            "status": "live"
+                            "title": title.get("name", "Unknown Series"),
+                            "tournament": tournament.get("name", "Unknown Tournament"),
+                            "status": "completed"
                         })
+                    
+                    logger.info(f"Found {len(matches)} series in Central Data")
                     return matches
                 else:
-                    logger.warning(f"GRID GraphQL API returned {response.status_code}: {response.text}")
+                    logger.error(f"Central Data returned {response.status_code}: {response.text[:200]}")
+                    return []
             except Exception as e:
-                logger.error(f"Error fetching GraphQL match list: {str(e)}")
+                logger.error(f"Error fetching from Central Data: {str(e)}")
+                return []
 
         return []
-
-    def _get_mock_data(self, match_id: str) -> Dict[str, Any]:
-        # Determine which mock data to use based on match_id prefix or pattern
-        if str(match_id).startswith("val"):
-            mock_file = Path(__file__).parent / "mock_match_valorant.json"
-        else:
-            mock_file = Path(__file__).parent / "mock_match.json"
-            
-        try:
-            with open(mock_file, "r") as f:
-                data = json.load(f)
-                # Update matchId in mock data to match requested ID for consistency
-                if "metadata" in data:
-                    data["metadata"]["matchId"] = match_id
-                return data
-        except Exception as e:
-            logger.error(f"Error reading mock file {mock_file}: {str(e)}")
-            raise
 
 # Singleton instance
 grid_service = GridService()
