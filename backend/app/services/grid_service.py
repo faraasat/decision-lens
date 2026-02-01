@@ -23,6 +23,7 @@ class GridService:
         # Official GRID API endpoints per documentation
         self.central_data_url = "https://api-op.grid.gg/central-data/graphql"
         self.statistics_url = "https://api-op.grid.gg/statistics-feed/graphql"
+        self.file_download_url = "https://api.grid.gg/file-download"
 
         self.headers = {
             "x-api-key": self.api_key or "",
@@ -34,13 +35,31 @@ class GridService:
 
     async def get_match_timeline(self, match_id: str) -> Dict[str, Any]:
         """
-        Fetch match data using GRID GraphQL APIs (Central Data + Statistics).
-        Returns a constructed timeline object compatible with the normalizer.
+        Fetch match data using GRID File Download API for full timeline.
+        Falls back to GraphQL if file is not available.
         """
         if not self.api_key or self.api_key == "YOUR_GRID_API_KEY":
             raise ValueError("GRID_API_KEY is missing or invalid.")
 
         async with httpx.AsyncClient() as client:
+            # Try to fetch full end-state data from File Download API
+            try:
+                logger.info(f"Fetching end-state data for series {match_id}")
+                file_res = await client.get(
+                    f"{self.file_download_url}/end-state/grid/series/{match_id}",
+                    headers={"x-api-key": self.api_key},
+                    timeout=30.0,
+                )
+                
+                if file_res.status_code == 200:
+                    logger.info(f"Successfully fetched full timeline for {match_id}")
+                    return file_res.json()
+                else:
+                    logger.warning(f"File Download API not available (Status: {file_res.status_code}), falling back to GraphQL")
+            except Exception as e:
+                logger.error(f"Error calling File Download API: {str(e)}")
+
+            # Fallback to GraphQL (Original implementation)
             # 1. Fetch Series Details (Teams, Tournament)
             try:
                 logger.info(f"Fetching details for series {match_id}")

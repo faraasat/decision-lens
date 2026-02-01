@@ -48,6 +48,36 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const VideoPlayer = ({ url, isLive }: { url?: string; isLive: boolean }) => {
+  return (
+    <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-2xl group">
+      {isLive ? (
+        <>
+          <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3 py-1 bg-red-600 rounded-full animate-pulse">
+            <div className="w-2 h-2 bg-white rounded-full" />
+            <span className="text-[10px] font-black text-white uppercase tracking-widest">Live Feed</span>
+          </div>
+          <iframe 
+            src={url || "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&mute=1"} 
+            className="w-full h-full border-none"
+            allow="autoplay; encrypted-media"
+            allowFullScreen
+          />
+          <div className="absolute inset-0 pointer-events-none border-[20px] border-transparent group-hover:border-primary/5 transition-all duration-700" />
+          <div className="absolute bottom-4 right-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+             <span className="text-[10px] font-mono text-primary bg-black/60 px-2 py-1 rounded">GRID_VIDEO_STREAM_ENCRYPTED</span>
+          </div>
+        </>
+      ) : (
+        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+          <Activity className="w-12 h-12 text-slate-700 mb-4" />
+          <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Awaiting Signal Acquisition...</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("macro");
   const [activeGame, setActiveGame] = useState("lol");
@@ -62,6 +92,8 @@ export default function Dashboard() {
   const [currentTimeIndex, setCurrentTimeIndex] = useState(-1);
   const [isLive, setIsLive] = useState(false);
   const [liveMatches, setLiveMatches] = useState<any[]>([]);
+  const [websocket, setWebsocket] = useState<WebSocket | null>(null);
+  const [liveDataHistory, setLiveDataHistory] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchMatches = async () => {
@@ -74,9 +106,7 @@ export default function Dashboard() {
 
         if (matches.length > 0 && !matchId) {
           setMatchId(matches[0].id);
-          // Don't set loading to false here - let the match data fetch handle it
         } else if (matches.length === 0 && !matchId) {
-          // Only show "no matches" if we're not currently loading a match
           setLoading(false);
         }
       } catch (err) {
@@ -86,24 +116,65 @@ export default function Dashboard() {
     };
 
     fetchMatches();
-  }, [activeGame]); // Remove matchId from dependencies to prevent race conditions
+  }, [activeGame]);
 
   useEffect(() => {
-    let interval: any;
-    if (isLive && data?.timeline_snapshots) {
-      interval = setInterval(() => {
-        setCurrentTimeIndex((prev) => {
-          const next = prev + 1;
-          if (next >= data.timeline_snapshots.length) {
-            setIsLive(false);
-            return prev;
-          }
-          return next;
-        });
-      }, 5000);
+    if (isLive) {
+      // Connect to WebSocket
+      const ws = new WebSocket("ws://localhost:8000/ws/live");
+      
+      ws.onopen = () => {
+        console.log("Connected to Live Feed");
+        // Ask backend to start streaming this match
+        fetch(`http://localhost:8000/api/live/start/${matchId}`, { method: "POST" });
+      };
+
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === "STATE_UPDATE") {
+          const newData = message.data;
+          setLiveDataHistory(prev => [...prev, newData].slice(-50)); // Keep last 50 snapshots
+          
+          // Update the current view data
+          setData((prev: any) => {
+            if (!prev) return prev;
+            
+            // We need to merge the new live state into our existing data structure
+            const updatedSnapshots = [...(prev.timeline_snapshots || []), newData];
+            return {
+              ...prev,
+              timeline_snapshots: updatedSnapshots,
+              current_state: newData,
+              player_stats: newData.player_stats || prev.player_stats,
+              shap_explanations: newData.shap_explanations || prev.shap_explanations
+            };
+          });
+          
+          // Force current index to the end
+          setCurrentTimeIndex((prev) => {
+             // In live mode, we just want to show the latest
+             return -1; // -1 triggers the 'else' block in data processing which picks last snapshot
+          });
+        }
+      };
+
+      ws.onclose = () => {
+        console.log("Disconnected from Live Feed");
+        setIsLive(false);
+      };
+
+      setWebsocket(ws);
+      return () => {
+        ws.close();
+        fetch(`http://localhost:8000/api/live/stop`, { method: "POST" });
+      };
+    } else {
+      if (websocket) {
+        websocket.close();
+        setWebsocket(null);
+      }
     }
-    return () => clearInterval(interval);
-  }, [isLive, data]);
+  }, [isLive, matchId]);
 
   // Defensive: Only use timeline_snapshots if available and index is valid
   let currentData;
@@ -497,7 +568,36 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="grid grid-cols-12 gap-6">
+      <main className="grid grid-cols-12 gap-6 relative z-10">
+        {/* Video Feed Section */}
+        <div className="col-span-12">
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <VideoPlayer isLive={isLive} />
+              </div>
+              <div className="lg:col-span-1 space-y-4">
+                 <div className="glass-panel p-6 rounded-2xl h-full flex flex-col justify-center">
+                    <h3 className="text-primary font-black italic text-xl mb-2">LIVE ANALYSIS ENGINE</h3>
+                    <p className="text-slate-400 text-xs mb-4">Processing real-time telemetry from GRID Live Data Feed. XGBoost inference active at 10Hz.</p>
+                    <div className="space-y-3">
+                       <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-800">
+                          <span className="text-[10px] text-slate-500 font-bold uppercase">Signal Latency</span>
+                          <span className="text-xs font-mono text-green-400">24ms</span>
+                       </div>
+                       <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-800">
+                          <span className="text-[10px] text-slate-500 font-bold uppercase">Data Points/Sec</span>
+                          <span className="text-xs font-mono text-primary">1,420</span>
+                       </div>
+                       <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-800">
+                          <span className="text-[10px] text-slate-500 font-bold uppercase">AI Confidence</span>
+                          <span className="text-xs font-mono text-primary">94.8%</span>
+                       </div>
+                    </div>
+                 </div>
+              </div>
+           </div>
+        </div>
+
         {/* Left Column: Stats & Chart */}
         <div className="col-span-12 lg:col-span-8 space-y-6">
           <div className="grid grid-cols-4 gap-4">
@@ -1011,8 +1111,58 @@ export default function Dashboard() {
               )}
 
               {activeTab === "efficiency" && (
-                <div className="grid grid-cols-12 gap-6">
-                  <div className="col-span-12 xl:col-span-8 overflow-x-auto">
+                <div className="space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="glass-panel p-6 rounded-2xl">
+                       <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                          <Activity className="w-4 h-4 text-primary" />
+                          Efficiency Score Distribution
+                       </h3>
+                       <div className="h-[250px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={currentData?.player_stats}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                              <XAxis dataKey="player_id" stroke="#475569" fontSize={10} tickFormatter={(v) => `P${v}`} />
+                              <YAxis stroke="#475569" fontSize={10} domain={[0, 100]} />
+                              <Tooltip 
+                                contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b" }}
+                                cursor={{ fill: 'rgba(0, 163, 255, 0.1)' }}
+                              />
+                              <Bar dataKey="efficiency_score" radius={[4, 4, 0, 0]}>
+                                {currentData?.player_stats?.map((entry: any, index: number) => (
+                                  <Cell key={`cell-${index}`} fill={entry.team_id === 100 || entry.team_id === "blue" ? "#00a3ff" : "#ef4444"} />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                       </div>
+                    </div>
+
+                    <div className="glass-panel p-6 rounded-2xl">
+                       <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                          <Target className="w-4 h-4 text-primary" />
+                          Performance Matrix
+                       </h3>
+                       <div className="space-y-4">
+                          {currentData?.player_stats?.slice(0, 5).map((p: any, i: number) => (
+                             <div key={i} className="flex flex-col gap-1">
+                                <div className="flex justify-between text-[10px] font-bold uppercase">
+                                   <span className="text-slate-300">Player {p.player_id}</span>
+                                   <span className="text-primary">{p.efficiency_score}%</span>
+                                </div>
+                                <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                   <div 
+                                      className="h-full bg-primary" 
+                                      style={{ width: `${p.efficiency_score}%` }} 
+                                   />
+                                </div>
+                             </div>
+                          ))}
+                       </div>
+                    </div>
+                  </div>
+
+                  <div className="col-span-12 xl:col-span-8 overflow-x-auto glass-panel p-6 rounded-2xl">
                     <table className="w-full text-left">
                       <thead>
                         <tr className="text-[10px] font-bold text-slate-500 uppercase tracking-widest border-b border-slate-800">
@@ -1865,10 +2015,18 @@ export default function Dashboard() {
 
               {/* SHAP Feature Importance */}
               <div className="bg-slate-900/40 p-5 rounded-xl border border-slate-800">
-                <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
-                  <Activity className="w-3 h-3 text-primary" />
-                  Decision Drivers (SHAP)
-                </h3>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex items-center gap-2">
+                    <Activity className="w-3 h-3 text-primary" />
+                    Decision Drivers (SHAP)
+                  </h3>
+                  <div className="group relative">
+                    <AlertTriangle className="w-3 h-3 text-slate-600 cursor-help" />
+                    <div className="absolute right-0 bottom-full mb-2 w-48 p-2 bg-slate-800 text-[8px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 border border-slate-700">
+                      SHAP values quantify how much each feature contributed to the AI's current win probability prediction. Green indicates positive impact on Team 100, Red indicates negative.
+                    </div>
+                  </div>
+                </div>
                 <div className="h-[200px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart

@@ -3,9 +3,10 @@ import math
 from typing import Dict, List, Any
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Response, Body
+from fastapi import FastAPI, HTTPException, Response, Body, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from app.services.grid_service import grid_service
+from app.services.live_stream_service import live_stream_service
 from app.core.normalization import normalizer
 from app.analytics.micro import micro_analytics
 from app.analytics.macro import macro_analytics
@@ -48,6 +49,32 @@ async def get_live_matches(game: str = "lol"):
     except Exception as e:
         logger.error(f"Error fetching live matches: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.websocket("/ws/live")
+async def websocket_endpoint(websocket: WebSocket):
+    await live_stream_service.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive and listen for any client messages
+            data = await websocket.receive_text()
+            logger.info(f"Received message from client: {data}")
+    except WebSocketDisconnect:
+        live_stream_service.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        live_stream_service.disconnect(websocket)
+
+@app.post("/api/live/start/{match_id}")
+async def start_live_stream(match_id: str):
+    import asyncio
+    # Run the stream in the background
+    asyncio.create_task(live_stream_service.start_live_stream(match_id))
+    return {"status": "started", "match_id": match_id}
+
+@app.post("/api/live/stop")
+async def stop_live_stream():
+    live_stream_service.stop_stream()
+    return {"status": "stopped"}
 
 @app.post("/api/simulate")
 async def simulate_state(payload: Dict[str, Any] = Body(...)):

@@ -61,7 +61,7 @@ class MacroAnalyticsEngine:
 
     @staticmethod
     def analyze_draft_synergy(metadata: Dict[str, Any]) -> Dict[str, Any]:
-        """Simulate draft synergy and power spikes."""
+        """Analyze draft synergy based on composition patterns."""
         teams = metadata.get("teams", [])
         game = metadata.get("game", "lol")
         if not teams:
@@ -72,19 +72,41 @@ class MacroAnalyticsEngine:
             team_id = team.get("id")
             draft = team.get("draft", [])
             
-            score = 75
-            if game == "valorant":
-                if "Jett" in draft and "Omen" in draft: score += 10
-                if "Killjoy" in draft: score += 5 # Good defense
-            else:
-                if "Vi" in draft and "Azir" in draft: score += 15 
-                if "Jayce" in draft and "Lee Sin" in draft: score += 10
+            # Base synergy from various archetypes
+            score = 70 + (len(draft) * 2) # Base score depends on completed draft
             
+            if game == "valorant":
+                # Check for roles (Simplified)
+                if any(agent in ["Jett", "Raze", "Neon"] for agent in draft): score += 5 # Entry
+                if any(agent in ["Omen", "Brimstone", "Astra", "Viper"] for agent in draft): score += 5 # Smokes
+                if any(agent in ["Killjoy", "Cypher", "Sage"] for agent in draft): score += 5 # Sentinel
+                
+                # Known combos
+                if "Viper" in draft and "Astra" in draft: score += 5 # Double controller
+                if "Jett" in draft and "Sova" in draft: score += 5 # Classic combo
+            else:
+                # LoL archetypes
+                if any(hero in ["Ornn", "Malphite", "Sejuani"] for hero in draft): score += 5 # Tank
+                if any(hero in ["Azir", "Kassadin", "Kayle", "Jinx"] for hero in draft): score += 5 # Scaling
+                
+                # Synergies
+                if "Yasuo" in draft and any(h in ["Gragas", "Malphite", "Diana"] for h in draft): score += 10 # Wombo combo
+                if "Lucian" in draft and "Nami" in draft: score += 10 # Strong lane
+            
+            # Determine power spike based on composition
+            spike = "Balanced"
+            if game == "lol":
+                if any(h in ["Azir", "Kassadin", "Jinx"] for h in draft): spike = "Late Game"
+                elif any(h in ["Lee Sin", "Renekton", "Lucian"] for hero in draft): spike = "Early Game"
+                else: spike = "Mid Game"
+            else:
+                spike = "Late Round" if "Killjoy" in draft or "Cypher" in draft else "Early Aggression"
+
             synergy[str(team_id)] = {
                 "team_name": team.get("name"),
-                "synergy_score": score,
-                "power_spike": "Late Round" if game == "valorant" else ("Mid Game" if team_id == 100 else "Early Game"),
-                "win_rate_prediction": 0.50 + (score - 75) / 100
+                "synergy_score": min(100, score),
+                "power_spike": spike,
+                "win_rate_prediction": 0.50 + (score - 80) / 100
             }
         return synergy
 
