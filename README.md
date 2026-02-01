@@ -1,38 +1,60 @@
 # DecisionLens AI Assistant Coach
 
-An AI-powered assistant coach for League of Legends & Valorant, designed to provide real-time strategic insights and post-match analysis using GRID telemetry.
+DecisionLens is an AI assistant coach for League of Legends and VALORANT. It ingests GRID match data, normalizes timelines, and generates coach-ready insights: macro swings, micro mistakes, win-probability shifts, and explainable “what-if” scenarios. The dashboard is a live, scifi-styled coaching view built for fast review and decision support.
 
-## Features
+## What it does
 
-- **Win Probability Telemetry**: Real-time XGBoost-powered win probability forecasting based on gold, XP, and objectives.
-- **Macro Inflection Detection**: Identifies critical game-turning moments and strategic shifts.
-- **Micro Performance Analysis**: Detects player mistakes (e.g., isolated deaths) and calculates efficiency metrics (GPM, total gold).
-- **Counterfactual "What-If" Engine**: Simulate alternate scenarios to quantify the impact of strategic decisions.
-- **AI Strategic Overview**: LLM-synthesized summaries with priority action items for coaches.
+- **Live & post-match analysis** using GRID series timelines and stats.
+- **Win probability telemetry** powered by XGBoost with SHAP explanations.
+- **Macro inflection detection** for turning points and objective swings.
+- **Micro performance signals** (isolated deaths, efficiency, economy/vision).
+- **Counterfactual review** to quantify alternate decisions.
 
-## Getting Started
+## Tech stack
+
+- **Backend:** FastAPI + pandas/numpy, XGBoost, SHAP
+- **Frontend:** Next.js (App Router), Recharts, Tailwind CSS
+- **Data:** GRID Central Data + File Download APIs
+
+## Run the project
 
 ### Prerequisites
 
 - Python 3.9+
 - Node.js 18+
-- Yarn or NPM
+- Yarn or npm
 
-### Backend Setup
+### 1) Backend
 
-1. Navigate to `backend/`
-2. Install dependencies: `pip install -r requirements.txt`
-3. Copy `.env.example` to `.env` and add your GRID API Key (optional, defaults to mock data).
-4. Start the server: `fastapi dev app/main.py`
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
 
-### Frontend Setup
+Add your GRID API key to `.env`:
 
-1. Navigate to `frontend/`
-2. Install dependencies: `npm install` or `yarn install`
-3. Start the dev server: `npm run dev` or `yarn dev`
-4. Access the dashboard at `http://localhost:3000`
+```
+GRID_API_KEY=YOUR_KEY
+```
 
-## Documentation & References
+### Monorepo shortcut
 
-- [GRID GraphQL Documentation](https://docs.grid.gg/public/documentation/graphql-playground)
-- [GRID API Getting Started](https://docs.grid.gg/public/documentation/api-documentation/getting-started/overview)
+From the repo root:
+
+```bash
+yarn
+yarn dev
+```
+
+## Notes
+
+- Without a valid `GRID_API_KEY`, live series lists and real timelines will not load.
+- Live mode can fall back to simulated data when a series doesn’t expose full timeline frames.
+
+## References
+
+- [GRID GraphQL Playground](https://docs.grid.gg/public/documentation/graphql-playground)
+- [GRID API Overview](https://docs.grid.gg/public/documentation/api-documentation/getting-started/overview)
