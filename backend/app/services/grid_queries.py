@@ -6,13 +6,31 @@ Based on official GRID API documentation.
 LOL = 3
 VALORANT = 6
 
-types = "ESPORTS"
-
-# Central Data Feed - Get Recent Series
+# Central Data Feed - Get Series with Available Data
 # Endpoint: https://api-op.grid.gg/central-data/graphql
+# Uses productServiceLevels filter to only get series with live data available
 GET_RECENT_SERIES = """
 query GetRecentSeries($titleId: ID!) {
-    allSeries(first: 30, filter: {titleId: $titleId}) {
+    allSeries(
+        first: 50, 
+        filter: {
+            titleId: $titleId,
+            types: ESPORTS,
+            productServiceLevels: {
+                productName: "liveDataFeed",
+                serviceLevel: FULL
+            }
+        },
+        orderBy: StartTimeScheduled,
+        orderDirection: DESC
+    ) {
+        totalCount
+        pageInfo {
+            hasPreviousPage
+            hasNextPage
+            startCursor
+            endCursor
+        }
         edges {
             node {
                 id
@@ -22,26 +40,80 @@ query GetRecentSeries($titleId: ID!) {
                 tournament {
                     name
                 }
+                startTimeScheduled
             }
         }
     }
 }
 """
 
-# Live Data Feed - Get Live Series State
-# Endpoint: https://api-op.grid.gg/live-data-feed/graphql
-GET_LIVE_SERIES_STATE = """
-query GetLiveSeriesState($titleIds: [ID!]!) {
-    allSeries(titleIds: $titleIds) {
+# Central Data Feed - Get Series Details
+# Endpoint: https://api-op.grid.gg/central-data/graphql
+GET_SERIES_DETAILS = """
+query GetSeriesDetails($id: ID!) {
+    series(id: $id) {
         id
-        state
         title {
-            id
             name
         }
         tournament {
-            id
             name
+        }
+        startTimeScheduled
+        teams {
+            base {
+                id
+                name
+                code
+            }
+            roster {
+                id
+                nickname
+            }
+        }
+        format {
+            name
+        }
+    }
+}
+"""
+
+# Statistics Feed - Get Series Stats
+# Endpoint: https://api-op.grid.gg/statistics-feed/graphql
+GET_SERIES_STATS = """
+query GetSeriesStats($seriesId: ID!) {
+    seriesStats(seriesId: $seriesId) {
+        seriesId
+        games {
+            gameId
+            matchNumber
+            winnerId
+            duration
+            playerStats {
+                playerId
+                teamId
+                kills
+                deaths
+                assists
+                goldEarned
+                damageDealtToChampions
+                cs
+                visionScore
+                # Valorant specific
+                averageCombatScore
+                averageDamagePerRound
+                headshots
+            }
+            teamStats {
+                teamId
+                goldEarned
+                kills
+                towersDestroyed
+                dragonsKilled
+                baronsKilled
+                # Valorant
+                roundsWon
+            }
         }
     }
 }
