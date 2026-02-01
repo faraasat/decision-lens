@@ -43,6 +43,7 @@ class GridService:
 
         async with httpx.AsyncClient() as client:
             # Try to fetch full end-state data from File Download API
+            timeline_data = {}
             try:
                 logger.info(f"Fetching end-state data for series {match_id}")
                 file_res = await client.get(
@@ -53,14 +54,13 @@ class GridService:
                 
                 if file_res.status_code == 200:
                     logger.info(f"Successfully fetched full timeline for {match_id}")
-                    return file_res.json()
+                    timeline_data = file_res.json()
                 else:
                     logger.warning(f"File Download API not available (Status: {file_res.status_code}), falling back to GraphQL")
             except Exception as e:
                 logger.error(f"Error calling File Download API: {str(e)}")
 
-            # Fallback to GraphQL (Original implementation)
-            # 1. Fetch Series Details (Teams, Tournament)
+            # Fetch Series Details (Teams, Tournament) - always good to have
             try:
                 logger.info(f"Fetching details for series {match_id}")
                 details_res = await client.post(
@@ -73,14 +73,14 @@ class GridService:
                 details_data = {}
                 if details_res.status_code == 200:
                     d_json = details_res.json()
-                    details_data = d_json.get("data", {}).get("series", {})
+                    details_data = d_json.get("data", {}).get("series", {}) or {}
                 else:
                     logger.error(f"Failed to fetch details: {details_res.status_code}")
             except Exception as e:
                 logger.error(f"Error fetching details: {str(e)}")
                 details_data = {}
 
-            # 2. Fetch Series Stats
+            # Fetch Series Stats
             try:
                 logger.info(f"Fetching stats for series {match_id}")
                 stats_res = await client.post(
@@ -96,7 +96,7 @@ class GridService:
                 stats_data = {}
                 if stats_res.status_code == 200:
                     s_json = stats_res.json()
-                    stats_data = s_json.get("data", {}).get("seriesStats", {})
+                    stats_data = s_json.get("data", {}).get("seriesStats", {}) or {}
                 else:
                     logger.error(f"Failed to fetch stats: {stats_res.status_code}")
             except Exception as e:
@@ -104,46 +104,62 @@ class GridService:
                 stats_data = {}
 
         # Construct the response object
-        # We need to adapt the GraphQL data to look like the legacy file download data
-        # so that the normalizer and frontend can consume it without major refactors.
-
-        games = stats_data.get("games", [])
-        current_game = games[-1] if games else {}
-
-        # Construct metadata
         teams = details_data.get("teams", [])
-        team1 = teams[0] if len(teams) > 0 else {}
-        team2 = teams[1] if len(teams) > 1 else {}
+        
+        # Determine game title and ID
+        title_name = details_data.get("title", {}).get("name")
+        if not title_name and "seriesState" in timeline_data:
+            title_name = timeline_data["seriesState"].get("title", {}).get("name")
+        
+        game = "lol"
+        if title_name:
+            if "Valorant" in title_name:
+                game = "valorant"
+            elif "League of Legends" in title_name:
+                game = "lol"
+        
+        # If we still don't know, try titleId from seriesState
+        if game == "lol" and "seriesState" in timeline_data:
+            tid = str(timeline_data["seriesState"].get("titleId"))
+            if tid == "6":
+                game = "valorant"
 
-        timestamp = 0
-        if current_game:
-            # Duration is in seconds or something? format usually "PT34M12S" or similar ISO
-            # For now assume we just use current time or 0
-            timestamp = 0
+        team_list = []
+        for i, t in enumerate(teams):
+            team_list.append({
+                "id": 100 if i == 0 else 200,
+                "name": t.get("base", {}).get("name", f"Team {i+1}"),
+                "code": t.get("base", {}).get("code"),
+                "roster": t.get("roster", []),
+                "side": "blue" if i == 0 else "red"
+            })
 
-        return {
+        # If no teams in details, try to extract from timeline
+        if not team_list and "seriesState" in timeline_data:
+            for i, t in enumerate(timeline_data["seriesState"].get("teams", [])):
+                team_list.append({
+                    "id": 100 if i == 0 else 200,
+                    "name": t.get("name", f"Team {i+1}"),
+                    "side": "blue" if i == 0 else "red"
+                })
+
+        result = {
             "series_id": match_id,
             "metadata": {
-                "teams": [
-                    {
-                        "id": 100,
-                        "name": team1.get("base", {}).get("name", "Team 1"),
-                        "roster": team1.get("roster", []),
-                    },
-                    {
-                        "id": 200,
-                        "name": team2.get("base", {}).get("name", "Team 2"),
-                        "roster": team2.get("roster", []),
-                    },
-                ],
-                "tournament": details_data.get("tournament", {}).get("name"),
-                "title": details_data.get("title", {}).get("name"),
+                "teams": team_list,
+                "tournament": details_data.get("tournament", {}).get("name") or (timeline_data.get("seriesState", {}).get("tournament", {}).get("name") if "seriesState" in timeline_data else "Unknown Tournament"),
+                "title": title_name or "Unknown Title",
+                "game": game
             },
-            # We pass the raw stats to be used by the app.
-            # The app's normalizer might need updates if it strictly expects file format.
-            "stats": current_game,
+            "stats": stats_data,
             "raw_details": details_data,
         }
+        
+        # Merge timeline data if present
+        if timeline_data:
+            result.update(timeline_data)
+        
+        return result
 
     async def get_match_details(self, match_id: str) -> Dict[str, Any]:
         """Alias for get_match_timeline since we fetch everything together now."""

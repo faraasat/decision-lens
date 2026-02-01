@@ -28,6 +28,10 @@ class LiveStreamService:
         logger.info(f"Client disconnected. Total: {len(self.active_connections)}")
 
     async def broadcast(self, message: Dict[str, Any]):
+        if not self.active_connections:
+            logger.debug("No active connections to broadcast to")
+            return
+        logger.info(f"Broadcasting {message.get('type')} to {len(self.active_connections)} clients")
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
@@ -90,37 +94,57 @@ class LiveStreamService:
             "gold_diff": state.get("gold_diff", 0),
             "xp_diff": state.get("xp_diff", 0),
             "time_seconds": state.get("timestamp", 0) / 1000,
-            "dragons_diff": 0, # Should be calculated from state
-            "towers_diff": 0,
-            "barons_diff": 0,
-            "team100_kills": 0,
-            "team200_kills": 0
+            "dragons_diff": state.get("dragons_diff", 0),
+            "towers_diff": state.get("towers_diff", 0),
+            "barons_diff": state.get("barons_diff", 0),
+            "team100_kills": state.get("team100_kills", 0),
+            "team200_kills": state.get("team200_kills", 0)
         }
 
     async def _run_mock_stream(self, match_id: str):
         """Generates realistic mock data if real match data is unavailable."""
         gold_diff = 0
-        for i in range(100):
+        team100_kills = 0
+        team200_kills = 0
+        dragons_diff = 0
+        
+        for i in range(200):
             if not self.is_running:
                 break
                 
-            gold_diff += (i * 10) + (i % 5 * 100)
+            # Simulate a dynamic game
+            gold_diff += (i * 2) + (i % 7 * 50) - (i % 5 * 40)
+            if i % 10 == 0: team100_kills += 1
+            if i % 12 == 0: team200_kills += 1
+            if i % 50 == 0: dragons_diff += 1
+            
             state = {
                 "timestamp": i * 5000,
                 "gold_diff": gold_diff,
-                "xp_diff": gold_diff * 0.8,
-                "team100_gold": 5000 + gold_diff,
-                "team200_gold": 5000
+                "xp_diff": gold_diff * 0.85,
+                "team100_gold": 5000 + (i * 400) + gold_diff,
+                "team200_gold": 5000 + (i * 400),
+                "dragons_diff": dragons_diff,
+                "towers_diff": int(gold_diff / 2000),
+                "barons_diff": 1 if i > 100 and gold_diff > 5000 else 0,
+                "team100_kills": team100_kills,
+                "team200_kills": team200_kills,
+                "player_stats": [] # Could be populated for more realism
             }
             
-            win_prob = decision_engine.predict_win_probability(self._extract_features(state))
-            state['win_prob'] = win_prob
+            # Enrich with AI
+            features = self._extract_features(state)
+            state['win_prob'] = decision_engine.predict_win_probability(features)
+            state['shap_explanations'] = decision_engine.explain_decision(features)
+            
+            self.state_history.append(state)
             
             await self.broadcast({
                 "type": "STATE_UPDATE",
                 "match_id": match_id,
                 "data": state,
-                "is_mock": True
+                "is_mock": True,
+                "history_count": len(self.state_history)
             })
             await asyncio.sleep(2)
 

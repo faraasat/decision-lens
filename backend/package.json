@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "uvicorn app.main:app --reload",
-    "start": "uvicorn app.main:app"
+    "dev": "./venv/bin/python -m uvicorn app.main:app --reload",
+    "start": "./venv/bin/python -m uvicorn app.main:app"
   }
 }

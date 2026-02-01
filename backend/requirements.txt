@@ -9,3 +9,4 @@ shap
 mlflow
 python-dotenv
 httpx
+websockets

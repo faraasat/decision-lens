@@ -58,7 +58,7 @@ const VideoPlayer = ({ url, isLive }: { url?: string; isLive: boolean }) => {
             <span className="text-[10px] font-black text-white uppercase tracking-widest">Live Feed</span>
           </div>
           <iframe 
-            src={url || "https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&mute=1"} 
+            src={url || "https://www.youtube.com/embed/Gj2K4m93Q9w?autoplay=1&mute=1&loop=1&playlist=Gj2K4m93Q9w"} 
             className="w-full h-full border-none"
             allow="autoplay; encrypted-media"
             allowFullScreen
@@ -102,11 +102,19 @@ export default function Dashboard() {
           `http://localhost:8000/api/matches/live?game=${activeGame}`,
         );
         const matches = await res.json();
-        setLiveMatches(matches);
+        
+        // Add demo matches for guaranteed state visibility
+        const demoMatches = [
+          { id: "2825123", game: "lol", title: "C9 vs FlyQuest (Demo)", tournament: "LCS Showcase", status: "available" },
+          { id: "2843071", game: "valorant", title: "C9 vs Sentinels (Demo)", tournament: "VCT Showcase", status: "available" }
+        ].filter(m => m.game === activeGame);
+        
+        const finalMatches = [...matches, ...demoMatches];
+        setLiveMatches(finalMatches);
 
-        if (matches.length > 0 && !matchId) {
-          setMatchId(matches[0].id);
-        } else if (matches.length === 0 && !matchId) {
+        if (finalMatches.length > 0 && !matchId) {
+          setMatchId(finalMatches[0].id);
+        } else {
           setLoading(false);
         }
       } catch (err) {
@@ -137,16 +145,25 @@ export default function Dashboard() {
           
           // Update the current view data
           setData((prev: any) => {
-            if (!prev) return prev;
+            // Even if prev is null, we want to set the initial state from live data
+            const baseData = prev || {
+              match_id: matchId,
+              game: activeGame,
+              timeline_snapshots: [],
+              macro_insights: [],
+              micro_insights: [],
+              player_stats: [],
+              objectives: []
+            };
             
             // We need to merge the new live state into our existing data structure
-            const updatedSnapshots = [...(prev.timeline_snapshots || []), newData];
+            const updatedSnapshots = [...(baseData.timeline_snapshots || []), newData];
             return {
-              ...prev,
+              ...baseData,
               timeline_snapshots: updatedSnapshots,
               current_state: newData,
-              player_stats: newData.player_stats || prev.player_stats,
-              shap_explanations: newData.shap_explanations || prev.shap_explanations
+              player_stats: newData.player_stats || baseData.player_stats,
+              shap_explanations: newData.shap_explanations || baseData.shap_explanations
             };
           });
           

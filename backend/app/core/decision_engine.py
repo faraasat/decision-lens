@@ -83,7 +83,7 @@ class DecisionEngine:
 
     def predict_bulk_probabilities(self, game_states: List[Dict[str, Any]]) -> List[float]:
         if self.model is None:
-            self.train_mock_model()
+            self.train_on_real_patterns()
         if not game_states:
             return []
         df = pd.DataFrame(game_states, columns=self.feature_names).fillna(0)
@@ -93,7 +93,7 @@ class DecisionEngine:
     def explain_decision(self, game_state: Dict[str, Any]) -> Dict[str, float]:
         """Use SHAP to explain why the win probability is what it is."""
         if self.explainer is None:
-            self.train_mock_model()
+            self.train_on_real_patterns()
             
         df = pd.DataFrame([game_state], columns=self.feature_names).fillna(0)
         shap_values = self.explainer.shap_values(df)
